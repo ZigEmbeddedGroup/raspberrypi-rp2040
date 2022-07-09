@@ -12,44 +12,57 @@ pub const Configuration = struct {
     postdiv2: u3,
 };
 
-pub const sys = @intToPtr(*volatile PLL, regs.PLL_SYS.base_address);
-pub const usb = @intToPtr(*volatile PLL, regs.PLL_USB.base_address);
+pub const sys = PLL{
+    .which = .sys,
+    .cs = regs.PLL_SYS.CS,
+    .pwr = regs.PLL_SYS.PWR,
+    .fbdiv_int = regs.PLL_SYS.FBDIV_INT,
+    .prim = regs.PLL_SYS.PRIM,
+};
 
-pub const PLL = packed struct {
-    cs: @TypeOf(regs.PLL_SYS.CS),
-    pwr: @TypeOf(regs.PLL_SYS.PWR),
-    fbdiv_int: @TypeOf(regs.PLL_SYS.FBDIV_INT),
-    prim: @TypeOf(regs.PLL_SYS.PRIM),
+pub const usb = PLL{
+    .which = .usb,
+    .cs = @ptrCast(CsReg, regs.PLL_USB.CS),
+    .pwr = @ptrCast(PwrReg, regs.PLL_USB.PWR),
+    .fbdiv_int = @ptrCast(FbdivIntReg, regs.PLL_USB.FBDIV_INT),
+    .prim = @ptrCast(PrimReg, regs.PLL_USB.PRIM),
+};
 
-    comptime {
-        // bunch of comptime checks in here to validate the layout
-        assert(0 == @bitOffsetOf(PLL, "cs"));
-        assert(32 == @bitOffsetOf(PLL, "pwr"));
-        assert(64 == @bitOffsetOf(PLL, "fbdiv_int"));
-        assert(96 == @bitOffsetOf(PLL, "prim"));
-    }
+const CsReg = @TypeOf(regs.PLL_SYS.CS);
+const PwrReg = @TypeOf(regs.PLL_SYS.PWR);
+const FbdivIntReg = @TypeOf(regs.PLL_SYS.FBDIV_INT);
+const PrimReg = @TypeOf(regs.PLL_SYS.PRIM);
 
-    pub fn isLocked(pll: *const volatile PLL) bool {
+pub const PLL = struct {
+    which: enum {
+        sys,
+        usb,
+    },
+    cs: CsReg,
+    pwr: PwrReg,
+    fbdiv_int: FbdivIntReg,
+    prim: PrimReg,
+
+    pub fn isLocked(pll: PLL) bool {
         return pll.cs.read().LOCK == 1;
     }
 
-    pub fn reset(pll: *const volatile PLL) void {
-        switch (pll) {
-            sys => {
+    pub fn reset(pll: PLL) void {
+        switch (pll.which) {
+            .sys => {
                 regs.RESETS.RESET.modify(.{ .pll_sys = 1 });
                 regs.RESETS.RESET.modify(.{ .pll_sys = 0 });
-                while (regs.RESETS.RESET_DONE.read().pll_sys == 1) {}
+                while (regs.RESETS.RESET_DONE.read().pll_sys != 1) {}
             },
-            usb => {
+            .usb => {
                 regs.RESETS.RESET.modify(.{ .pll_usb = 1 });
                 regs.RESETS.RESET.modify(.{ .pll_usb = 0 });
-                while (regs.RESETS.RESET_DONE.read().pll_usb == 1) {}
+                while (regs.RESETS.RESET_DONE.read().pll_usb != 1) {}
             },
-            else => unreachable,
         }
     }
 
-    pub fn apply(pll: *volatile PLL, comptime config: Configuration) void {
+    pub fn apply(pll: PLL, comptime config: Configuration) void {
         const ref_freq = xosc_freq / @as(u32, config.refdiv);
         const fbdiv = @intCast(u12, config.vco_freq / ref_freq);
 

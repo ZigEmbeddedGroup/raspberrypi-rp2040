@@ -65,38 +65,6 @@ pub const Generator = enum {
     adc,
     rtc,
 
-    // source directly from register definitions
-    const Source = enum {
-        rosc_clksrc_ph,
-        clksrc_clk_ref_aux,
-        xosc_clksrc,
-        clk_ref,
-        clksrc_clk_sys_aux,
-    };
-
-    // aux sources directly from register definitions
-    const AuxilarySource = enum {
-        clksrc_pll_sys,
-        clksrc_gpin0,
-        clksrc_gpin1,
-        clksrc_pll_usb,
-        rosc_clksrc,
-        xosc_clksrc,
-        clk_sys,
-        clk_usb,
-        clk_adc,
-        clk_rtc,
-        clk_ref,
-        rosc_clksrc_ph,
-    };
-
-    const source_map = struct {
-        const ref = [_]Generator.Source{ .rosc_clksrc_ph, .clksrc_clk_ref, .xosc_clksrc };
-        const sys = [_]Generator.Source{ .clk_ref, .clksrc_clk_sys_aux };
-    };
-
-    const aux_map = struct {};
-
     // in some cases we can pretend the Generators are a homogenous array of
     // register clusters for the sake of smaller codegen
     const GeneratorRegs = packed struct {
@@ -152,15 +120,141 @@ pub const Generator = enum {
     pub fn selected(generator: Generator) bool {
         return (0 != generators[@enumToInt(generator)].selected);
     }
+
+    pub fn clearSource(generator: Generator) void {
+        generators[@enumToInt(generator)].ctrl &= ~@as(u32, 0x3);
+    }
+
+    pub fn disable(generator: Generator) void {
+        switch (generator) {
+            .sys, .ref => {},
+            else => generators[@enumToInt(generator)].ctrl &= ~@as(u32, 1 << 11),
+        }
+    }
+
+    pub fn isAuxSource(generator: Generator, source: Source) bool {
+        return switch (generator) {
+            .sys => switch (source) {
+                .clk_ref => false,
+                else => true,
+            },
+            .ref => switch (source) {
+                .src_rosc, .src_xosc => false,
+                else => true,
+            },
+            else => true,
+        };
+    }
+
+    pub fn setSource(generator: Generator, source: Source) void {
+        const src: u32 = switch (generator) {
+            .sys => src: {
+                const ret: u32 = switch (source) {
+                    .clk_ref => 0,
+                    else => 1,
+                };
+                break :src ret;
+            },
+            .ref => src: {
+                const ret: u32 = switch (source) {
+                    .src_rosc => 0,
+                    .src_xosc => 2,
+                    else => 1,
+                };
+                break :src ret;
+            },
+            else => 0,
+        };
+
+        const mask = ~@as(u32, 0x3);
+        const ctrl_value = generators[@enumToInt(generator)].ctrl;
+        generators[@enumToInt(generator)].ctrl = (ctrl_value & mask) | src;
+    }
+
+    pub fn setAuxSource(generator: Generator, source: Source) void {
+        const auxsrc: u32 = switch (generator) {
+            .sys => auxsrc: {
+                const ret: u32 = switch (source) {
+                    .pll_sys => 0,
+                    .pll_usb => 1,
+                    .src_rosc => 2,
+                    .src_xosc => 3,
+                    .src_gpin0 => 4,
+                    .src_gpin1 => 5,
+                    else => @panic("invalid source for generator"),
+                };
+                break :auxsrc ret;
+            },
+            .ref => auxsrc: {
+                const ret: u32 = switch (source) {
+                    .pll_sys => 0,
+                    .src_gpin0 => 1,
+                    .src_gpin1 => 2,
+                    else => @panic("invalid source for generator"),
+                };
+                break :auxsrc ret;
+            },
+            .peri => auxsrc: {
+                const ret: u32 = switch (source) {
+                    .clk_sys => 0,
+                    .pll_sys => 1,
+                    .pll_usb => 2,
+                    .src_rosc => 3,
+                    .src_xosc => 4,
+                    .src_gpin0 => 5,
+                    .src_gpin1 => 6,
+                    else => @panic("invalid source for generator"),
+                };
+                break :auxsrc ret;
+            },
+            .usb, .adc, .rtc => auxsrc: {
+                const ret: u32 = switch (source) {
+                    .pll_usb => 0,
+                    .pll_sys => 1,
+                    .src_rosc => 2,
+                    .src_xosc => 3,
+                    .src_gpin0 => 4,
+                    .src_gpin1 => 5,
+                    else => @panic("invalid source for generator"),
+                };
+                break :auxsrc ret;
+            },
+            .gpout0, .gpout1, .gpout2, .gpout3 => auxsrc: {
+                const ret: u32 = switch (source) {
+                    .pll_sys => 0,
+                    .src_gpin0 => 1,
+                    .src_gpin1 => 2,
+                    .pll_usb => 3,
+                    .src_rosc => 4,
+                    .src_xosc => 5,
+                    .clk_sys => 6,
+                    .clk_usb => 7,
+                    .clk_adc => 8,
+                    .clk_rtc => 9,
+                    .clk_ref => 10,
+                };
+                break :auxsrc ret;
+            },
+        };
+
+        const mask = ~@as(u32, 0x1e0);
+        const ctrl_value = generators[@enumToInt(generator)].ctrl;
+        generators[@enumToInt(generator)].ctrl = (ctrl_value & mask) | (auxsrc << 5);
+    }
 };
 
 pub const Source = enum {
     src_rosc,
     src_xosc,
-    src_aux,
+    src_gpin0,
+    src_gpin1,
     pll_sys,
     pll_usb,
     clk_sys,
+    clk_ref,
+    clk_usb,
+    clk_adc,
+    clk_rtc,
 };
 
 pub const GlobalConfiguration = struct {
@@ -293,6 +387,8 @@ pub const GlobalConfiguration = struct {
             // either use the ROSC, XOSC, or sys PLL, with whatever dividing
             // they need
 
+            // adc requires a 48MHz clock, so only ever let it get hooked up to
+            // the usb PLL
             .adc = if (opts.adc) |_|
                 unreachable // TODO
             else
@@ -307,7 +403,6 @@ pub const GlobalConfiguration = struct {
                 if (peri_opts.source == .src_xosc)
                     xosc_configured = true;
 
-                // TODO
                 break :peri_config .{
                     .generator = .peri,
                     .input = .{
@@ -397,27 +492,25 @@ pub const Configuration = struct {
             generator.setDiv(div);
 
         // TODO what _is_ an aux source?
-        if (generator.hasGlitchlessMux() and input.source == .src_aux) {
-            //generator.clearSource();
+        if (generator.hasGlitchlessMux() and generator.isAuxSource(input.source)) {
+            generator.clearSource();
             while (!generator.selected()) {}
         } else {
-            //generator.disable();
+            generator.disable();
             var delay_cycles = sys_config.output_freq / config.output_freq + 1;
-            _ = delay_cycles;
             asm volatile (
                 \\1:
                 \\subs %[cycles], #1
                 \\bne 1b
                 : [cycles] "=r" (delay_cycles),
             );
-            // TODO: wait 3 cycles
         }
 
-        //generator.setAuxSource();
+        generator.setAuxSource(config.input.source);
 
         // set aux mux first and then glitchless mex if this clock has one
         if (generator.hasGlitchlessMux()) {
-            //generator.setSource(config.input.source);
+            generator.setSource(config.input.source);
             while (!generator.selected()) {}
         }
 

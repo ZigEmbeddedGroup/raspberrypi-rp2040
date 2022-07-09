@@ -7,10 +7,13 @@ pub const time = @import("hal/time.zig");
 
 pub const default_clock_config = clocks.GlobalConfiguration.init(.{
     //.ref = .{ .source = .src_xosc },
-    .sys = .{
-        .source = .pll_sys,
-        .freq = 125_000_000,
-    },
+    .sys = .{ .source = .src_xosc },
+    //.peri = .{ .source = .clk_sys },
+
+    //.sys = .{
+    //    .source = .pll_sys,
+    //    .freq = 125_000_000,
+    //},
     //.usb = .{ .source = .pll_usb },
     //.adc = .{ .source = .pll_usb },
     //.rtc = .{ .source = .pll_usb },
