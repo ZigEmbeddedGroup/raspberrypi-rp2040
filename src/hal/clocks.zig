@@ -1,11 +1,11 @@
 const std = @import("std");
 const microzig = @import("microzig");
 const pll = @import("pll.zig");
+const util = @import("util.zig");
 const assert = std.debug.assert;
 
 const regs = microzig.chip.registers;
 const xosc_freq = microzig.board.xosc_freq;
-// TODO: move to board file
 /// this is only nominal, very imprecise and prone to drift over time
 const rosc_freq = 6_500_000;
 
@@ -96,6 +96,24 @@ pub const Generator = enum {
 
     const aux_map = struct {};
 
+    // in some cases we can pretend the Generators are a homogenous array of
+    // register clusters for the sake of smaller codegen
+    const GeneratorRegs = packed struct {
+        ctrl: u32,
+        div: u32,
+        selected: u32,
+    };
+
+    comptime {
+        assert(12 == @sizeOf(GeneratorRegs));
+        assert(24 == @sizeOf([2]GeneratorRegs));
+    }
+
+    const generators = @intToPtr(
+        *volatile [9]GeneratorRegs,
+        regs.CLOCKS.base_address,
+    );
+
     pub fn hasGlitchlessMux(generator: Generator) bool {
         return switch (generator) {
             .sys, .ref => true,
@@ -104,46 +122,24 @@ pub const Generator = enum {
     }
 
     pub fn enable(generator: Generator) void {
-        inline for (std.meta.fields(Generator)) |field| {
-            if (generator == @field(Generator, field.name)) {
-                const reg_name = comptime std.fmt.comptimePrint("CLK_{s}_CTRL", .{
-                    uppercase(field.name),
-                });
-
-                if (@hasField(@TypeOf(@field(regs.CLOCKS, reg_name).*).underlying_type, "ENABLE"))
-                    @field(regs.CLOCKS, reg_name).modify(.{ .ENABLE = 1 });
-            }
+        switch (generator) {
+            .ref, .sys => {},
+            else => generators[@enumToInt(generator)].ctrl |= (1 << 11),
         }
     }
 
     pub fn setDiv(generator: Generator, div: u32) void {
-        inline for (std.meta.fields(Generator)) |field| {
-            if (generator == @field(Generator, field.name)) {
-                const reg_name = comptime std.fmt.comptimePrint("CLK_{s}_DIV", .{
-                    uppercase(field.name),
-                });
+        if (generator == .peri)
+            return;
 
-                if (@hasDecl(regs.CLOCKS, reg_name))
-                    @field(regs.CLOCKS, reg_name).raw = div
-                else
-                    assert(false); // doesn't have a divider
-            }
-        }
+        generators[@enumToInt(generator)].div = div;
     }
 
     pub fn getDiv(generator: Generator) u32 {
-        return inline for (std.meta.fields(Generator)) |field| {
-            if (generator == @field(Generator, field.name)) {
-                const reg_name = comptime std.fmt.comptimePrint("CLK_{s}_DIV", .{
-                    uppercase(field.name),
-                });
+        if (generator == .peri)
+            return 1;
 
-                break if (@hasDecl(regs.CLOCKS, reg_name))
-                    @field(regs.CLOCKS, reg_name).raw
-                else
-                    1;
-            }
-        } else unreachable;
+        return generators[@enumToInt(generator)].div;
     }
 
     // The bitfields for the *_SELECTED registers are actually a mask of which
@@ -153,17 +149,7 @@ pub const Generator = enum {
     //
     // Some mention that this is only for the glitchless mux, so if it is non-glitchless then return true
     pub fn selected(generator: Generator) bool {
-        inline for (std.meta.fields(Generator)) |field| {
-            if (generator == @field(Generator, field.name)) {
-                return if (@field(Generator, field.name).hasGlitchlessMux()) ret: {
-                    const reg_name = comptime std.fmt.comptimePrint("CLK_{s}_SELECTED", .{
-                        uppercase(field.name),
-                    });
-
-                    break :ret @field(regs.CLOCKS, reg_name).* != 0;
-                } else true;
-            }
-        } else unreachable;
+        return (0 != generators[@enumToInt(generator)].selected);
     }
 };
 
@@ -230,7 +216,7 @@ pub const GlobalConfiguration = struct {
                             output_freq = sys_opts.freq orelse xosc_freq;
                             assert(output_freq.? <= xosc_freq);
                             break :input .{
-                                .source = .xosc,
+                                .source = .src_xosc,
                                 .freq = xosc_freq,
                             };
                         },
@@ -370,11 +356,11 @@ pub const GlobalConfiguration = struct {
             else => {},
         };
 
-        // initialize PLLs
+        //// initialize PLLs
         if (config.pll_sys) |pll_sys_config| pll.sys.apply(pll_sys_config);
         if (config.pll_usb) |pll_usb_config| pll.usb.apply(pll_usb_config);
 
-        // initialize clock generators
+        //// initialize clock generators
         if (config.ref) |ref| try ref.apply();
         if (config.usb) |usb| try usb.apply();
         if (config.adc) |adc| try adc.apply();
@@ -397,7 +383,7 @@ pub const Configuration = struct {
     },
     output_freq: u32,
 
-    pub fn apply(config: Configuration) !void {
+    pub fn apply(comptime config: Configuration) !void {
         const generator = config.generator;
         const input = config.input;
         const output_freq = config.output_freq;
