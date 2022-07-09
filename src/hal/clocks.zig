@@ -5,6 +5,7 @@ const util = @import("util.zig");
 const assert = std.debug.assert;
 
 const regs = microzig.chip.registers;
+const CLOCKS = regs.CLOCKS;
 const xosc_freq = microzig.board.xosc_freq;
 /// this is only nominal, very imprecise and prone to drift over time
 const rosc_freq = 6_500_000;
@@ -367,12 +368,6 @@ pub const GlobalConfiguration = struct {
         if (config.rtc) |rtc| try rtc.apply();
         if (config.peri) |peri| try peri.apply();
     }
-
-    /// returns frequency of a clock or pll, if unconfigured it returns null
-    pub fn getFrequency(config: GlobalConfiguration) ?u32 {
-        _ = config;
-        return null;
-    }
 };
 
 pub const Configuration = struct {
@@ -420,5 +415,19 @@ pub const Configuration = struct {
     }
 };
 
-//pub fn countFrequencyKhz(source: Source) u32 {}
+pub fn countFrequencyKhz(source: Source, comptime clock_config: GlobalConfiguration) u32 {
+    const ref_freq = clock_config.ref.?.output_freq;
 
+    // wait for counter to be done
+    while (CLOCKS.FC0_STATUS.read().RUNNING == 1) {}
+
+    CLOCKS.FC0_REF_KHZ.* = ref_freq / 1000;
+    CLOCKS.FC0_INTERVAL.* = 10;
+    CLOCKS.FC0_MIN_KHZ.* = 0;
+    CLOCKS.FC0_MAX_KHZ.* = std.math.maxInt(u32);
+    CLOCKS.FC0_SRC.* = @enumToInt(source);
+
+    while (CLOCKS.FC0_STATUS.read().DONE != 1) {}
+
+    return CLOCKS.FC0_RESULT.read().KHZ;
+}
