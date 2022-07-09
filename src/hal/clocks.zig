@@ -362,11 +362,11 @@ pub const GlobalConfiguration = struct {
         if (config.pll_usb) |pll_usb_config| pll.usb.apply(pll_usb_config);
 
         //// initialize clock generators
-        if (config.ref) |ref| try ref.apply();
-        if (config.usb) |usb| try usb.apply();
-        if (config.adc) |adc| try adc.apply();
-        if (config.rtc) |rtc| try rtc.apply();
-        if (config.peri) |peri| try peri.apply();
+        if (config.ref) |ref| try ref.apply(config.sys);
+        if (config.usb) |usb| try usb.apply(config.sys);
+        if (config.adc) |adc| try adc.apply(config.sys);
+        if (config.rtc) |rtc| try rtc.apply(config.sys);
+        if (config.peri) |peri| try peri.apply(config.sys);
     }
 };
 
@@ -378,10 +378,12 @@ pub const Configuration = struct {
     },
     output_freq: u32,
 
-    pub fn apply(comptime config: Configuration) !void {
+    pub fn apply(comptime config: Configuration, comptime sys_config_opt: ?Configuration) !void {
         const generator = config.generator;
         const input = config.input;
         const output_freq = config.output_freq;
+
+        const sys_config = sys_config_opt.?; // sys clock config needs to be set!
 
         // source frequency has to be faster because dividing will always reduce.
         assert(input.freq >= output_freq);
@@ -394,24 +396,33 @@ pub const Configuration = struct {
         if (div > generator.getDiv())
             generator.setDiv(div);
 
+        // TODO what _is_ an aux source?
         if (generator.hasGlitchlessMux() and input.source == .src_aux) {
-            // TODO: clear bits
-            while (!generator.selected()) {
-                // TODO: is leaving this empty good enough? pico sdk has `tight_loop_contents()`
-            }
+            //generator.clearSource();
+            while (!generator.selected()) {}
         } else {
-            // uh stuff
+            //generator.disable();
+            var delay_cycles = sys_config.output_freq / config.output_freq + 1;
+            _ = delay_cycles;
+            asm volatile (
+                \\1:
+                \\subs %[cycles], #1
+                \\bne 1b
+                : [cycles] "=r" (delay_cycles),
+            );
+            // TODO: wait 3 cycles
         }
+
+        //generator.setAuxSource();
 
         // set aux mux first and then glitchless mex if this clock has one
         if (generator.hasGlitchlessMux()) {
-            // write to clock ctrl
+            //generator.setSource(config.input.source);
             while (!generator.selected()) {}
         }
 
         generator.enable();
         generator.setDiv(div);
-        // should we store global state on configured clocks?
     }
 };
 
