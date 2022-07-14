@@ -8,7 +8,10 @@ pub const time = @import("hal/time.zig");
 pub const uart = @import("hal/uart.zig");
 
 pub const clock_config = clocks.GlobalConfiguration.init(.{
-    .sys = .{ .source = .src_xosc },
+    .sys = .{
+        .source = .pll_sys,
+        .freq = 125_000_000,
+    },
     .ref = .{ .source = .src_xosc },
     .peri = .{ .source = .clk_sys },
 });

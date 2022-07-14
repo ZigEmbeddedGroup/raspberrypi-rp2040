@@ -311,6 +311,8 @@ pub const GlobalConfiguration = struct {
             .clk_sys => if (config.sys) |sys_config| sys_config.output_freq else null,
             .clk_usb => if (config.usb) |usb_config| usb_config.output_freq else null,
             .clk_ref => if (config.ref) |ref_config| ref_config.output_freq else null,
+            .pll_sys => if (config.pll_sys) |pll_sys_config| pll_sys_config.frequency() else null,
+            .pll_usb => if (config.pll_usb) |pll_usb_config| pll_usb_config.frequency() else null,
             else => null,
         };
     }
@@ -382,10 +384,10 @@ pub const GlobalConfiguration = struct {
 
                         // TODO: proper values for 125MHz
                         config.pll_sys = .{
-                            .refdiv = 2,
-                            .vco_freq = 1_440_000_000,
+                            .refdiv = 1,
+                            .fbdiv = 125,
                             .postdiv1 = 6,
-                            .postdiv2 = 5,
+                            .postdiv2 = 2,
                         };
 
                         break :input .{
@@ -414,9 +416,9 @@ pub const GlobalConfiguration = struct {
             config.xosc_configured = true;
             config.pll_usb = .{
                 .refdiv = 1,
-                .vco_freq = 1_440_000_000,
-                .postdiv1 = 6,
-                .postdiv2 = 5,
+                .fbdiv = 40,
+                .postdiv1 = 5,
+                .postdiv2 = 2,
             };
 
             break :usb_config .{
@@ -444,15 +446,15 @@ pub const GlobalConfiguration = struct {
             // TODO: some safety checks for overwriting this
             if (config.pll_usb) |pll_usb| {
                 assert(pll_usb.refdiv == 1);
-                assert(pll_usb.refdiv == 1_440_000_000);
-                assert(pll_usb.refdiv == 6);
-                assert(pll_usb.refdiv == 5);
+                assert(pll_usb.fbdiv == 40);
+                assert(pll_usb.postdiv1 == 5);
+                assert(pll_usb.postdiv2 == 2);
             } else {
                 config.pll_usb = .{
                     .refdiv = 1,
-                    .vco_freq = 1_440_000_000,
-                    .postdiv1 = 6,
-                    .postdiv2 = 5,
+                    .fbdiv = 40,
+                    .postdiv1 = 5,
+                    .postdiv2 = 2,
                 };
             }
 
@@ -531,7 +533,7 @@ pub const GlobalConfiguration = struct {
         if (config.sys) |sys| switch (sys.input.source) {
             .pll_usb, .pll_sys => {
                 regs.CLOCKS.CLK_SYS_CTRL.modify(.{ .SRC = 0 });
-                while (regs.CLOCKS.CLK_SYS_SELECTED.* == 0) {}
+                while (!Generator.sys.selected()) {}
             },
             else => {},
         };
@@ -539,7 +541,7 @@ pub const GlobalConfiguration = struct {
         if (config.ref) |ref| switch (ref.input.source) {
             .pll_usb, .pll_sys => {
                 regs.CLOCKS.CLK_REF_CTRL.modify(.{ .SRC = 0 });
-                while (regs.CLOCKS.CLK_REF_SELECTED.* == 0) {}
+                while (!Generator.ref.selected()) {}
             },
             else => {},
         };
@@ -550,10 +552,10 @@ pub const GlobalConfiguration = struct {
 
         //// initialize clock generators
         if (config.ref) |ref| ref.apply(config.sys);
+        if (config.sys) |sys| sys.apply(config.sys);
         if (config.usb) |usb| usb.apply(config.sys);
         if (config.adc) |adc| adc.apply(config.sys);
         if (config.rtc) |rtc| rtc.apply(config.sys);
-        if (config.sys) |sys| sys.apply(config.sys);
         if (config.peri) |peri| peri.apply(config.sys);
         if (config.gpout0) |gpout0| gpout0.apply(config.sys);
         if (config.gpout1) |gpout1| gpout1.apply(config.sys);
@@ -616,6 +618,7 @@ pub const Configuration = struct {
     }
 };
 
+// NOTE: untested
 pub fn countFrequencyKhz(source: Source, comptime clock_config: GlobalConfiguration) u32 {
     const ref_freq = clock_config.ref.?.output_freq;
 
