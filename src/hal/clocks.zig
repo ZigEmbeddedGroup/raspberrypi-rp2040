@@ -4,6 +4,9 @@ const pll = @import("pll.zig");
 const util = @import("util.zig");
 const assert = std.debug.assert;
 
+// TODO: remove
+const gpio = @import("gpio.zig");
+
 const regs = microzig.chip.registers;
 const CLOCKS = regs.CLOCKS;
 const xosc_freq = microzig.board.xosc_freq;
@@ -557,6 +560,7 @@ pub const GlobalConfiguration = struct {
         if (config.adc) |adc| adc.apply(config.sys);
         if (config.rtc) |rtc| rtc.apply(config.sys);
         if (config.peri) |peri| peri.apply(config.sys);
+
         if (config.gpout0) |gpout0| gpout0.apply(config.sys);
         if (config.gpout1) |gpout1| gpout1.apply(config.sys);
         if (config.gpout2) |gpout2| gpout2.apply(config.sys);
@@ -592,16 +596,20 @@ pub const Configuration = struct {
 
         if (generator.hasGlitchlessMux() and input.src_value == 1) {
             generator.clearSource();
+
             while (!generator.selected()) {}
         } else {
             generator.disable();
-            const delay_cycles = sys_config.output_freq / config.output_freq + 1;
+            const delay_cycles: u32 = sys_config.output_freq / config.output_freq + 1;
             asm volatile (
                 \\.syntax unified
+                \\movs r1, %[cycles]
                 \\1:
-                \\subs %[cycles], #1
+                \\subs r1, #1
                 \\bne 1b
-                : [cycles] "=r" (delay_cycles),
+                :
+                : [cycles] "i" (delay_cycles),
+                : "{r1}"
             );
         }
 
