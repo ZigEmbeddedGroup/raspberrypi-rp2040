@@ -595,7 +595,7 @@ pub const Configuration = struct {
             while (!generator.selected()) {}
         } else {
             generator.disable();
-            var delay_cycles = sys_config.output_freq / config.output_freq + 1;
+            const delay_cycles = sys_config.output_freq / config.output_freq + 1;
             asm volatile (
                 \\.syntax unified
                 \\1:
