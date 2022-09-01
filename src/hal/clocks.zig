@@ -473,10 +473,36 @@ pub const GlobalConfiguration = struct {
             };
         } else null;
 
-        config.rtc = if (opts.rtc) |_|
-            unreachable // TODO
-        else
-            null;
+        config.rtc = if (opts.rtc) |rtc_opts| rtc_config: {
+            assert(rtc_opts.source == .pll_usb);
+            config.xosc_configured = true;
+
+            // TODO: some safety checks for overwriting this
+            if (config.pll_usb) |pll_usb| {
+                assert(pll_usb.refdiv == 1);
+                assert(pll_usb.fbdiv == 40);
+                assert(pll_usb.postdiv1 == 5);
+                assert(pll_usb.postdiv2 == 2);
+            } else {
+                config.pll_usb = .{
+                    .refdiv = 1,
+                    .fbdiv = 40,
+                    .postdiv1 = 5,
+                    .postdiv2 = 2,
+                };
+            }
+
+            break :rtc_config .{
+                .generator = .usb,
+                .input = .{
+                    .source = .pll_usb,
+                    .freq = 48_000_000,
+                    .src_value = srcValue(.rtc, .pll_usb),
+                    .auxsrc_value = auxSrcValue(.rtc, .pll_usb),
+                },
+                .output_freq = 48_000_000,
+            };
+        } else null;
 
         config.peri = if (opts.peri) |peri_opts| peri_config: {
             if (peri_opts.source == .src_xosc)

@@ -1,5 +1,6 @@
 const std = @import("std");
 const gpio = @import("gpio.zig");
+const pwm = @import("pwm.zig");
 const regs = @import("microzig").chip.registers;
 
 const assert = std.debug.assert;
@@ -52,6 +53,8 @@ pub const Pin = enum {
         pub fn getDirection(config: Configuration) gpio.Direction {
             return if (config.direction) |direction|
                 direction
+            else if (config.function.isPwm())
+                .out
             else
                 @panic("TODO");
         }
@@ -130,6 +133,67 @@ pub const Function = enum {
     ADC1,
     ADC2,
     ADC3,
+
+    pub fn isPwm(function: Function) bool {
+        return switch (function) {
+            .PWM0_A,
+            .PWM0_B,
+            .PWM1_A,
+            .PWM1_B,
+            .PWM2_A,
+            .PWM2_B,
+            .PWM3_A,
+            .PWM3_B,
+            .PWM4_A,
+            .PWM4_B,
+            .PWM5_A,
+            .PWM5_B,
+            .PWM6_A,
+            .PWM6_B,
+            .PWM7_A,
+            .PWM7_B,
+            => true,
+            else => false,
+        };
+    }
+
+    pub fn pwmSlice(comptime function: Function) u32 {
+        return switch (function) {
+            .PWM0_A, .PWM0_B => 0,
+            .PWM1_A, .PWM1_B => 1,
+            .PWM2_A, .PWM2_B => 2,
+            .PWM3_A, .PWM3_B => 3,
+            .PWM4_A, .PWM4_B => 4,
+            .PWM5_A, .PWM5_B => 5,
+            .PWM6_A, .PWM6_B => 6,
+            .PWM7_A, .PWM7_B => 7,
+            else => @compileError("not pwm"),
+        };
+    }
+
+    pub fn pwmChannel(comptime function: Function) pwm.Channel {
+        return switch (function) {
+            .PWM0_A,
+            .PWM1_A,
+            .PWM2_A,
+            .PWM3_A,
+            .PWM4_A,
+            .PWM5_A,
+            .PWM6_A,
+            .PWM7_A,
+            => .a,
+            .PWM0_B,
+            .PWM1_B,
+            .PWM2_B,
+            .PWM3_B,
+            .PWM4_B,
+            .PWM5_B,
+            .PWM6_B,
+            .PWM7_B,
+            => .b,
+            else => @compileError("not pwm"),
+        };
+    }
 };
 
 fn all() [30]u1 {
@@ -240,7 +304,7 @@ pub fn Pins(comptime config: GlobalConfiguration) type {
         var ret: usize = 0;
         inline for (@typeInfo(GlobalConfiguration).Struct.fields) |field| {
             if (@field(config, field.name)) |pin_config|
-                if (pin_config.function == .SIO) {
+                if (pin_config.function == .SIO or pin_config.function.isPwm()) {
                     ret += 1;
                 };
         }
@@ -256,6 +320,16 @@ pub fn Pins(comptime config: GlobalConfiguration) type {
                 fields[i] = StructField{
                     .name = pin_config.name orelse field.name,
                     .field_type = GPIO(@enumToInt(@field(Pin, field.name)), pin_config.direction orelse .in),
+                    .is_comptime = false,
+                    .default_value = null,
+                    .alignment = 1,
+                };
+
+                i += 1;
+            } else if (pin_config.function.isPwm()) {
+                fields[i] = StructField{
+                    .name = pin_config.name orelse @tagName(pin_config.function),
+                    .field_type = pwm.PWM(pin_config.function.pwmSlice(), pin_config.function.pwmChannel()),
                     .is_comptime = false,
                     .default_value = null,
                     .alignment = 1,
@@ -350,6 +424,8 @@ pub const GlobalConfiguration = struct {
 
         if (output_gpios != 0)
             regs.SIO.GPIO_OE_SET.raw = output_gpios;
+
+        // TODO: pwm initialization
 
         // fields in the Pins(config) type should be zero sized, so we just
         // default build them all (wasn't sure how to do that cleanly in
