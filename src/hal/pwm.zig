@@ -14,8 +14,7 @@ pub fn PWM(comptime slice_num: u32, comptime chan: Channel) type {
         pub const channel = chan;
 
         pub inline fn setLevel(_: @This(), level: u16) void {
-            _ = level;
-            //setChannelLevel(slice_number, channel, level);
+            setChannelLevel(slice_number, channel, level);
         }
 
         pub fn slice(_: @This()) Slice(slice_number) {
@@ -33,8 +32,7 @@ pub fn Slice(comptime slice_num: u32) type {
         }
 
         pub inline fn enable(_: @This()) void {
-            const pwm_regs = getRegs(slice_number);
-            pwm_regs.csr.modify(.{ .EN = 1 });
+            getRegs(slice_number).csr.modify(.{ .EN = 1 });
         }
 
         pub inline fn disable(_: @This()) void {
@@ -89,7 +87,7 @@ pub inline fn setSliceClkDivMode(comptime slice: u32, mode: ClkDivMode) void {
 
 pub inline fn setChannelInversion(
     comptime slice: u32,
-    channel: Channel,
+    comptime channel: Channel,
     invert: bool,
 ) void {
     switch (channel) {
@@ -104,4 +102,15 @@ pub inline fn setChannelInversion(
 
 pub inline fn setSliceWrap(comptime slice: u32, wrap: u16) void {
     getRegs(slice).top.raw = wrap;
+}
+
+pub inline fn setChannelLevel(
+    comptime slice: u32,
+    comptime channel: Channel,
+    level: u16,
+) void {
+    switch (channel) {
+        .a => getRegs(slice).cc.modify(.{ .A = level }),
+        .b => getRegs(slice).cc.modify(.{ .B = level }),
+    }
 }

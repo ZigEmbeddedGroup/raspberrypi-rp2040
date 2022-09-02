@@ -406,7 +406,6 @@ pub const GlobalConfiguration = struct {
                     }
                 };
         }
-        // TODO: if function is not SIO, gpio options probably don't matter?
         // TODO: ensure only one instance of an input function exists
 
         const used_gpios = comptime input_gpios | output_gpios;
