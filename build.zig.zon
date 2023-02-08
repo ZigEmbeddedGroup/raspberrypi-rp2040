@@ -1,0 +1,10 @@
+.{
+    .name = "foo",
+    .version = "0.0.0",
+    .dependencies = .{
+        .@"microzig" = .{
+            .url = "https://github.com/ZigEmbeddedGroup/microzig/archive/56983ef2279ff4024e3b41bfb3333bb5c2d3286c.tar.gz",
+            .hash = "1220eaace6dc4ae7840af07190f133f3efe516a27e429cdeaa844c459e21eb3c201a",
+        },
+    },
+}

@@ -3,7 +3,7 @@ const Builder = std.build.Builder;
 const Pkg = std.build.Pkg;
 const comptimePrint = std.fmt.comptimePrint;
 
-pub const microzig = @import("deps/microzig/src/main.zig");
+pub const microzig = @import("microzig").microzig;
 
 const chip_path = comptimePrint("{s}/src/rp2040.zig", .{root()});
 const board_path = comptimePrint("{s}/src/raspberry_pi_pico.zig", .{root()});
@@ -53,8 +53,8 @@ pub fn addPiPicoExecutable(
 // package. In an attempt to modularize -- designing for a case where a
 // project requires multiple HALs, it accepts microzig as a param
 pub fn build(b: *Builder) !void {
-    const mode = b.standardReleaseOptions();
-    var examples = Examples.init(b, mode);
+    const optimize = b.standardOptimizeOption(.{});
+    var examples = Examples.init(b, optimize);
     examples.install();
 }
 
@@ -71,7 +71,7 @@ pub const Examples = struct {
     uart: microzig.EmbeddedExecutable,
     //uart_pins: microzig.EmbeddedExecutable,
 
-    pub fn init(b: *Builder, mode: std.builtin.Mode) Examples {
+    pub fn init(b: *Builder, optimize: std.builtin.OptimizeMode) Examples {
         var ret: Examples = undefined;
         inline for (@typeInfo(Examples).Struct.fields) |field| {
             @field(ret, field.name) = addPiPicoExecutable(
@@ -80,7 +80,7 @@ pub const Examples = struct {
                 comptime root() ++ "/examples/" ++ field.name ++ ".zig",
                 .{},
             );
-            @field(ret, field.name).setBuildMode(mode);
+            @field(ret, field.name).inner.optimize = optimize;
         }
 
         return ret;
