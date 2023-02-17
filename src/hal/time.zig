@@ -1,16 +1,16 @@
 const microzig = @import("microzig");
-const TIMER = microzig.chip.registers.TIMER;
+const TIMER = microzig.chip.peripherals.TIMER;
 
 pub const Absolute = struct {
     us_since_boot: u64,
 };
 
 pub fn getTimeSinceBoot() Absolute {
-    var high_word = TIMER.TIMERAWH.*;
+    var high_word = TIMER.TIMERAWH;
 
     return while (true) {
-        var low_word = TIMER.TIMERAWL.*;
-        const next_high_word = TIMER.TIMERAWH.*;
+        var low_word = TIMER.TIMERAWL;
+        const next_high_word = TIMER.TIMERAWH;
         if (next_high_word == high_word)
             break Absolute{
                 .us_since_boot = @intCast(u64, high_word) << 32 | low_word,

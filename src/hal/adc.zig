@@ -4,7 +4,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const microzig = @import("microzig");
-const ADC = microzig.chip.registers.ADC;
+const ADC = microzig.chip.peripherals.ADC;
 const rp2040 = microzig.hal;
 const gpio = rp2040.gpio;
 const resets = rp2040.resets;
@@ -45,7 +45,7 @@ pub const Input = enum(u3) {
             else => {
                 const gpio_num = @as(u32, @enumToInt(input)) + 26;
 
-                gpio.setFunction(gpio_num, .@"null");
+                gpio.setFunction(gpio_num, .null);
                 // TODO: implement these, otherwise adc isn't going to work.
                 //gpio.disablePulls(gpio_num);
                 //gpio.setInputEnabled(gpio_num, false);
@@ -74,7 +74,7 @@ pub const Input = enum(u3) {
         // wait for the
         while (ADC.CS.read().READY == 0) {}
 
-        return ADC.RESULT.read();
+        return ADC.RESULT.read().RESULT;
     }
 };
 
@@ -116,6 +116,11 @@ pub fn init() void {
         .ERR_STICKY = 0,
         .AINSEL = 0,
         .RROBIN = 0,
+
+        .reserved8 = 0,
+        .reserved12 = 0,
+        .reserved16 = 0,
+        .padding = 0,
     });
     while (ADC.CS.read().READY == 0) {}
 }

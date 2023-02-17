@@ -1,12 +1,16 @@
 const std = @import("std");
-const microzig = @import("microzig");
-const regs = microzig.chip.registers;
 const assert = std.debug.assert;
+
+const microzig = @import("microzig");
+const peripherals = microzig.chip.peripherals;
+const SIO = peripherals.SIO;
+const PSM = peripherals.PSM;
+const SCB = peripherals.SCB;
 
 pub const fifo = struct {
     /// Check if the FIFO has valid data for reading.
     pub fn isReadReady() bool {
-        return regs.SIO.FIFO_ST.read().VLD == 1;
+        return SIO.FIFO_ST.read().VLD == 1;
     }
 
     /// Read from the FIFO
@@ -15,7 +19,7 @@ pub const fifo = struct {
         if (!isReadReady())
             return null;
 
-        return regs.SIO.FIFO_RD.*;
+        return SIO.FIFO_RD;
     }
 
     /// Read from the FIFO, waiting for data if there is none.
@@ -33,13 +37,13 @@ pub const fifo = struct {
 
     /// Check if the FIFO is ready to receive data.
     pub fn isWriteReady() bool {
-        return regs.SIO.FIFO_ST.read().RDY == 1;
+        return SIO.FIFO_ST.read().RDY == 1;
     }
 
     /// Write to the FIFO
     /// You must check if there is space by calling is_write_ready
     pub fn write(value: u32) void {
-        regs.SIO.FIFO_WR.* = value;
+        SIO.FIFO_WR = value;
         microzig.cpu.sev();
     }
 
@@ -71,9 +75,9 @@ pub fn launchCore1WithStack(entrypoint: *const fn () void, stack: []u32) void {
     }.wrapper;
 
     // reset the second core
-    regs.PSM.FRCE_OFF.modify(.{ .proc1 = 1 });
-    while (regs.PSM.FRCE_OFF.read().proc1 != 1) microzig.cpu.nop();
-    regs.PSM.FRCE_OFF.modify(.{ .proc1 = 0 });
+    PSM.FRCE_OFF.modify(.{ .proc1 = 1 });
+    while (PSM.FRCE_OFF.read().proc1 != 1) microzig.cpu.nop();
+    PSM.FRCE_OFF.modify(.{ .proc1 = 0 });
 
     stack[stack.len - 2] = @ptrToInt(entrypoint);
     stack[stack.len - 1] = @ptrToInt(stack.ptr);
@@ -88,7 +92,7 @@ pub fn launchCore1WithStack(entrypoint: *const fn () void, stack: []u32) void {
         0,
         0,
         1,
-        regs.SCS.SCB.VTOR.raw,
+        SCB.VTOR.raw,
         stack_ptr,
         @ptrToInt(wrapper),
     };

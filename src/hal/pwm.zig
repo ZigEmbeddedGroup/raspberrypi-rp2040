@@ -1,6 +1,6 @@
 const std = @import("std");
 const microzig = @import("microzig");
-const regs = microzig.chip.registers;
+const PWM = microzig.chip.peripherals.PWM;
 
 const log = std.log.scoped(.pwm);
 
@@ -8,11 +8,12 @@ pub const Config = struct {};
 
 fn getRegs(comptime slice: u32) *volatile Regs {
     @import("std").debug.assert(slice < 8);
-    const reg_diff = comptime (@ptrToInt(regs.PWM.CH1_CSR) - @ptrToInt(regs.PWM.CH0_CSR));
-    return @intToPtr(*volatile Regs, regs.PWM.base_address + reg_diff * slice);
+    const PwmType = microzig.chip.types.peripherals.PWM;
+    const reg_diff = comptime @offsetOf(PwmType, "CH1_CSR") - @offsetOf(PwmType, "CH0_CSR");
+    return @intToPtr(*volatile Regs, @ptrToInt(PWM) + reg_diff * slice);
 }
 
-pub fn PWM(comptime slice_num: u32, comptime chan: Channel) type {
+pub fn Pwm(comptime slice_num: u32, comptime chan: Channel) type {
     return struct {
         pub const slice_number = slice_num;
         pub const channel = chan;
@@ -63,11 +64,11 @@ pub const ClkDivMode = enum(u2) {
 pub const Channel = enum(u1) { a, b };
 
 const Regs = extern struct {
-    csr: @typeInfo(@TypeOf(regs.PWM.CH0_CSR)).Pointer.child,
-    div: @typeInfo(@TypeOf(regs.PWM.CH0_DIV)).Pointer.child,
-    ctr: @typeInfo(@TypeOf(regs.PWM.CH0_CTR)).Pointer.child,
-    cc: @typeInfo(@TypeOf(regs.PWM.CH0_CC)).Pointer.child,
-    top: @typeInfo(@TypeOf(regs.PWM.CH0_TOP)).Pointer.child,
+    csr: @TypeOf(PWM.CH0_CSR),
+    div: @TypeOf(PWM.CH0_DIV),
+    ctr: @TypeOf(PWM.CH0_CTR),
+    cc: @TypeOf(PWM.CH0_CC),
+    top: @TypeOf(PWM.CH0_TOP),
 };
 
 pub inline fn setSlicePhaseCorrect(comptime slice: u32, phase_correct: bool) void {

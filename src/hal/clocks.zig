@@ -1,5 +1,5 @@
 const std = @import("std");
-const microzig = @import("microzig");
+
 const pll = @import("pll.zig");
 const util = @import("util.zig");
 const assert = std.debug.assert;
@@ -7,8 +7,11 @@ const assert = std.debug.assert;
 // TODO: remove
 const gpio = @import("gpio.zig");
 
-const regs = microzig.chip.registers;
-const CLOCKS = regs.CLOCKS;
+const microzig = @import("microzig");
+const peripherals = microzig.chip.peripherals;
+const CLOCKS = peripherals.CLOCKS;
+const WATCHDOG = peripherals.WATCHDOG;
+const XOSC = peripherals.XOSC;
 const xosc_freq = microzig.board.xosc_freq;
 /// this is only nominal, very imprecise and prone to drift over time
 const rosc_freq = 6_500_000;
@@ -22,21 +25,21 @@ pub const xosc = struct {
     const startup_delay_value = xosc_freq * startup_delay_ms / 1000 / 256;
 
     pub fn init() void {
-        regs.XOSC.STARTUP.modify(.{ .DELAY = startup_delay_value });
-        regs.XOSC.CTRL.modify(.{ .ENABLE = 4011 });
+        XOSC.STARTUP.modify(.{ .DELAY = startup_delay_value });
+        XOSC.CTRL.modify(.{ .ENABLE = .{ .value = .ENABLE } });
 
         // wait for xosc startup to complete:
-        while (regs.XOSC.STATUS.read().STABLE == 0) {}
+        while (XOSC.STATUS.read().STABLE == 0) {}
     }
 
     pub fn waitCycles(value: u8) void {
         assert(is_enabled: {
-            const status = regs.XOSC.STATUS.read();
+            const status = XOSC.STATUS.read();
             break :is_enabled status.STABLE != 0 and status.ENABLED != 0;
         });
 
-        regs.XOSC.COUNT.modify(value);
-        while (regs.XOSC.COUNT.read() != 0) {}
+        XOSC.COUNT.modify(value);
+        while (XOSC.COUNT.read() != 0) {}
     }
 };
 
@@ -81,10 +84,7 @@ pub const Generator = enum(u32) {
         assert(24 == @sizeOf([2]GeneratorRegs));
     }
 
-    const generators = @intToPtr(
-        *volatile [@typeInfo(Generator).Enum.fields.len]GeneratorRegs,
-        regs.CLOCKS.base_address,
-    );
+    const generators = @ptrCast(*volatile [@typeInfo(Generator).Enum.fields.len]GeneratorRegs, CLOCKS);
 
     fn getRegs(generator: Generator) *volatile GeneratorRegs {
         return &generators[@enumToInt(generator)];
@@ -551,10 +551,10 @@ pub const GlobalConfiguration = struct {
     pub fn apply(comptime config: GlobalConfiguration) void {
 
         // disable resus if it has been turned on elsewhere
-        regs.CLOCKS.CLK_SYS_RESUS_CTRL.raw = 0;
+        CLOCKS.CLK_SYS_RESUS_CTRL.raw = 0;
 
         if (config.xosc_configured) {
-            regs.WATCHDOG.TICK.modify(.{
+            WATCHDOG.TICK.modify(.{
                 .CYCLES = xosc_freq / 1_000_000,
                 .ENABLE = 1,
             });
@@ -565,7 +565,7 @@ pub const GlobalConfiguration = struct {
         // configured to use/be used from PLLs
         if (config.sys) |sys| switch (sys.input.source) {
             .pll_usb, .pll_sys => {
-                regs.CLOCKS.CLK_SYS_CTRL.modify(.{ .SRC = 0 });
+                CLOCKS.CLK_SYS_CTRL.modify(.{ .SRC = .{ .raw = 0 } });
                 while (!Generator.sys.selected()) {}
             },
             else => {},
@@ -573,7 +573,7 @@ pub const GlobalConfiguration = struct {
 
         if (config.ref) |ref| switch (ref.input.source) {
             .pll_usb, .pll_sys => {
-                regs.CLOCKS.CLK_REF_CTRL.modify(.{ .SRC = 0 });
+                CLOCKS.CLK_REF_CTRL.modify(.{ .SRC = .{ .raw = 0 } });
                 while (!Generator.ref.selected()) {}
             },
             else => {},

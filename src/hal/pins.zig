@@ -1,13 +1,15 @@
 const std = @import("std");
+const assert = std.debug.assert;
+const comptimePrint = std.fmt.comptimePrint;
+const StructField = std.builtin.Type.StructField;
+
+const microzig = @import("microzig");
+const SIO = microzig.chip.peripherals.SIO;
+
 const gpio = @import("gpio.zig");
 const pwm = @import("pwm.zig");
 const adc = @import("adc.zig");
 const resets = @import("resets.zig");
-const regs = @import("microzig").chip.registers;
-
-const assert = std.debug.assert;
-const comptimePrint = std.fmt.comptimePrint;
-const StructField = std.builtin.Type.StructField;
 
 pub const Pin = enum {
     GPIO0,
@@ -356,7 +358,7 @@ pub fn Pins(comptime config: GlobalConfiguration) type {
                     pin_field.type = GPIO(@enumToInt(@field(Pin, field.name)), pin_config.direction orelse .in);
                 } else if (pin_config.function.isPwm()) {
                     pin_field.name = pin_config.name orelse @tagName(pin_config.function);
-                    pin_field.type = pwm.PWM(pin_config.function.pwmSlice(), pin_config.function.pwmChannel());
+                    pin_field.type = pwm.Pwm(pin_config.function.pwmSlice(), pin_config.function.pwmChannel());
                 } else if (pin_config.function.isAdc()) {
                     pin_field.name = pin_config.name orelse @tagName(pin_config.function);
                     pin_field.type = adc.Input;
@@ -474,8 +476,8 @@ pub const GlobalConfiguration = struct {
         gpio.reset();
 
         if (used_gpios != 0) {
-            regs.SIO.GPIO_OE_CLR.raw = used_gpios;
-            regs.SIO.GPIO_OUT_CLR.raw = used_gpios;
+            SIO.GPIO_OE_CLR.raw = used_gpios;
+            SIO.GPIO_OUT_CLR.raw = used_gpios;
         }
 
         inline for (@typeInfo(GlobalConfiguration).Struct.fields) |field| {
@@ -511,7 +513,7 @@ pub const GlobalConfiguration = struct {
         }
 
         if (output_gpios != 0)
-            regs.SIO.GPIO_OE_SET.raw = output_gpios;
+            SIO.GPIO_OE_SET.raw = output_gpios;
 
         if (input_gpios != 0) {
             inline for (@typeInfo(GlobalConfiguration).Struct.fields) |field|
