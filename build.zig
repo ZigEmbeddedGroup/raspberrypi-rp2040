@@ -19,7 +19,7 @@ pub fn addPiPicoExecutable(
     name: []const u8,
     source: []const u8,
     options: BuildOptions,
-) microzig.EmbeddedExecutable {
+) *microzig.EmbeddedExecutable {
     const ret = microzig.addEmbeddedExecutable(
         builder,
         name,
@@ -48,12 +48,12 @@ fn root() []const u8 {
 }
 
 pub const Examples = struct {
-    adc: microzig.EmbeddedExecutable,
-    blinky: microzig.EmbeddedExecutable,
-    blinky_core1: microzig.EmbeddedExecutable,
-    gpio_clk: microzig.EmbeddedExecutable,
-    pwm: microzig.EmbeddedExecutable,
-    uart: microzig.EmbeddedExecutable,
+    adc: *microzig.EmbeddedExecutable,
+    blinky: *microzig.EmbeddedExecutable,
+    blinky_core1: *microzig.EmbeddedExecutable,
+    gpio_clk: *microzig.EmbeddedExecutable,
+    pwm: *microzig.EmbeddedExecutable,
+    uart: *microzig.EmbeddedExecutable,
     //uart_pins: microzig.EmbeddedExecutable,
 
     pub fn init(b: *Builder, optimize: std.builtin.OptimizeMode) Examples {
