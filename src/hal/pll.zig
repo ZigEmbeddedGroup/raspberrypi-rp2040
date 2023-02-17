@@ -23,7 +23,7 @@ pub const PLL = enum {
     sys,
     usb,
 
-    fn getRegs(pll: PLL) *volatile PllRegs {
+    fn get_regs(pll: PLL) *volatile PllRegs {
         return switch (pll) {
             .sys => peripherals.PLL_SYS,
             .usb => peripherals.PLL_USB,
@@ -45,8 +45,8 @@ pub const PLL = enum {
         }
     }
 
-    pub fn isLocked(pll: PLL) bool {
-        const pll_regs = pll.getRegs();
+    pub fn is_locked(pll: PLL) bool {
+        const pll_regs = pll.get_regs();
         return pll_regs.CS.read().LOCK == 1;
     }
 
@@ -56,7 +56,7 @@ pub const PLL = enum {
         assert(config.postdiv2 >= 1 and config.postdiv2 <= 7);
         assert(config.postdiv2 <= config.postdiv1);
 
-        const pll_regs = pll.getRegs();
+        const pll_regs = pll.get_regs();
         const ref_freq = xosc_freq / @as(u32, config.refdiv);
         const vco_freq = ref_freq * config.fbdiv;
         assert(ref_freq <= vco_freq / 16);
@@ -68,7 +68,7 @@ pub const PLL = enum {
         // 5. set up post dividers and turn them on
 
         // do not bother a PLL which is already configured
-        if (pll.isLocked() and
+        if (pll.is_locked() and
             config.refdiv == pll_regs.CS.read().REFDIV and
             config.fbdiv == pll_regs.FBDIV_INT.read().FBDIV_INT and
             config.postdiv1 == pll_regs.PRIM.read().POSTDIV1 and
@@ -87,7 +87,7 @@ pub const PLL = enum {
         pll_regs.PWR.modify(.{ .PD = 0, .VCOPD = 0 });
 
         // wait for PLL to lock
-        while (!pll.isLocked()) {}
+        while (!pll.is_locked()) {}
 
         pll_regs.PRIM.modify(.{
             .POSTDIV1 = config.postdiv1,

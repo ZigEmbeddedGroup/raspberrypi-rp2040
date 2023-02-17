@@ -58,7 +58,7 @@ pub const UART = enum {
         return .{ .context = uart };
     }
 
-    fn getRegs(uart: UART) *volatile UartRegs {
+    fn get_regs(uart: UART) *volatile UartRegs {
         return switch (uart) {
             .uart0 => UART0,
             .uart1 => UART1,
@@ -76,10 +76,10 @@ pub const UART = enum {
 
         uart.reset();
 
-        const uart_regs = uart.getRegs();
+        const uart_regs = uart.get_regs();
         const peri_freq = config.clock_config.peri.?.output_freq;
-        uart.setBaudRate(config.baud_rate, peri_freq);
-        uart.setFormat(config.word_bits, config.stop_bits, config.parity);
+        uart.set_baudrate(config.baud_rate, peri_freq);
+        uart.set_format(config.word_bits, config.stop_bits, config.parity);
 
         uart_regs.UARTCR.modify(.{
             .UARTEN = 1,
@@ -96,25 +96,25 @@ pub const UART = enum {
         });
 
         // TODO comptime assertions
-        if (config.tx_pin) |tx_pin| gpio.setFunction(tx_pin, .uart);
-        if (config.rx_pin) |rx_pin| gpio.setFunction(rx_pin, .uart);
+        if (config.tx_pin) |tx_pin| gpio.set_function(tx_pin, .uart);
+        if (config.rx_pin) |rx_pin| gpio.set_function(rx_pin, .uart);
 
         return uart;
     }
 
-    pub fn isReadable(uart: UART) bool {
-        return (0 == uart.getRegs().UARTFR.read().RXFE);
+    pub fn is_readable(uart: UART) bool {
+        return (0 == uart.get_regs().UARTFR.read().RXFE);
     }
 
-    pub fn isWritable(uart: UART) bool {
-        return (0 == uart.getRegs().UARTFR.read().TXFF);
+    pub fn is_writeable(uart: UART) bool {
+        return (0 == uart.get_regs().UARTFR.read().TXFF);
     }
 
     // TODO: implement tx fifo
     pub fn write(uart: UART, payload: []const u8) WriteError!usize {
-        const uart_regs = uart.getRegs();
+        const uart_regs = uart.get_regs();
         for (payload) |byte| {
-            while (!uart.isWritable()) {}
+            while (!uart.is_writeable()) {}
 
             uart_regs.UARTDR.raw = byte;
         }
@@ -123,9 +123,9 @@ pub const UART = enum {
     }
 
     pub fn read(uart: UART, buffer: []u8) ReadError!usize {
-        const uart_regs = uart.getRegs();
+        const uart_regs = uart.get_regs();
         for (buffer) |*byte| {
-            while (!uart.isReadable()) {}
+            while (!uart.is_readable()) {}
 
             // TODO: error checking
             byte.* = uart_regs.UARTDR.read().DATA;
@@ -133,9 +133,9 @@ pub const UART = enum {
         return buffer.len;
     }
 
-    pub fn readWord(uart: UART) u8 {
-        const uart_regs = uart.getRegs();
-        while (!uart.isReadable()) {}
+    pub fn read_word(uart: UART) u8 {
+        const uart_regs = uart.get_regs();
+        while (!uart.is_readable()) {}
 
         // TODO: error checking
         return uart_regs.UARTDR.read().DATA;
@@ -148,13 +148,13 @@ pub const UART = enum {
         }
     }
 
-    pub fn setFormat(
+    pub fn set_format(
         uart: UART,
         word_bits: WordBits,
         stop_bits: StopBits,
         parity: Parity,
     ) void {
-        const uart_regs = uart.getRegs();
+        const uart_regs = uart.get_regs();
         uart_regs.UARTLCR_H.modify(.{
             .WLEN = switch (word_bits) {
                 .eight => @as(u2, 0b11),
@@ -177,9 +177,9 @@ pub const UART = enum {
         });
     }
 
-    fn setBaudRate(uart: UART, baud_rate: u32, peri_freq: u32) void {
+    fn set_baudrate(uart: UART, baud_rate: u32, peri_freq: u32) void {
         assert(baud_rate > 0);
-        const uart_regs = uart.getRegs();
+        const uart_regs = uart.get_regs();
         const baud_rate_div = (8 * peri_freq / baud_rate);
         var baud_ibrd = @intCast(u16, baud_rate_div >> 7);
 
@@ -201,7 +201,7 @@ pub const UART = enum {
 
 var uart_logger: ?UART.Writer = null;
 
-pub fn initLogger(uart: UART) void {
+pub fn init_logger(uart: UART) void {
     uart_logger = uart.writer();
     uart_logger.?.writeAll("\r\n================ STARTING NEW LOGGER ================\r\n") catch {};
 }
@@ -219,7 +219,7 @@ pub fn log(
     };
 
     if (uart_logger) |uart| {
-        const current_time = time.getTimeSinceBoot();
+        const current_time = time.get_time_since_boot();
         const seconds = current_time.us_since_boot / std.time.us_per_s;
         const microseconds = current_time.us_since_boot % std.time.us_per_s;
 

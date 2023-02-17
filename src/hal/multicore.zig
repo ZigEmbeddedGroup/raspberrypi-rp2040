@@ -9,21 +9,21 @@ const SCB = peripherals.SCB;
 
 pub const fifo = struct {
     /// Check if the FIFO has valid data for reading.
-    pub fn isReadReady() bool {
+    pub fn is_read_ready() bool {
         return SIO.FIFO_ST.read().VLD == 1;
     }
 
     /// Read from the FIFO
     /// Will return null if it is empty.
     pub fn read() ?u32 {
-        if (!isReadReady())
+        if (!is_read_ready())
             return null;
 
         return SIO.FIFO_RD;
     }
 
     /// Read from the FIFO, waiting for data if there is none.
-    pub fn readBloacking() u32 {
+    pub fn read_blocking() u32 {
         while (true) {
             if (read()) |value| return value;
             microzig.cpu.wfe();
@@ -36,7 +36,7 @@ pub const fifo = struct {
     }
 
     /// Check if the FIFO is ready to receive data.
-    pub fn isWriteReady() bool {
+    pub fn is_write_ready() bool {
         return SIO.FIFO_ST.read().RDY == 1;
     }
 
@@ -48,8 +48,8 @@ pub const fifo = struct {
     }
 
     /// Write to the FIFO, waiting for room if it is full.
-    pub fn writeBlocking(value: u32) void {
-        while (!isWriteReady())
+    pub fn write_blocking(value: u32) void {
+        while (!is_write_ready())
             std.mem.doNotOptimizeAway(value);
 
         write(value);
@@ -59,11 +59,11 @@ pub const fifo = struct {
 var core1_stack: [128]u32 = undefined;
 
 /// Runs `entrypoint` on the second core.
-pub fn launchCore1(entrypoint: *const fn () void) void {
-    launchCore1WithStack(entrypoint, &core1_stack);
+pub fn launch_core1(entrypoint: *const fn () void) void {
+    launch_core1_with_stack(entrypoint, &core1_stack);
 }
 
-pub fn launchCore1WithStack(entrypoint: *const fn () void, stack: []u32) void {
+pub fn launch_core1_with_stack(entrypoint: *const fn () void, stack: []u32) void {
     // TODO: disable SIO interrupts
 
     const wrapper = &struct {
@@ -106,8 +106,8 @@ pub fn launchCore1WithStack(entrypoint: *const fn () void, stack: []u32) void {
             microzig.cpu.sev();
         }
 
-        fifo.writeBlocking(cmd);
+        fifo.write_blocking(cmd);
         // the second core should respond with the same value, if it doesnt't lets start over
-        seq = if (cmd == fifo.readBloacking()) seq + 1 else 0;
+        seq = if (cmd == fifo.read_blocking()) seq + 1 else 0;
     }
 }
