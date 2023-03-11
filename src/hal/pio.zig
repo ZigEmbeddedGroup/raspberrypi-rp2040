@@ -1,4 +1,99 @@
+//! A PIO instance can load a single `Bytecode`, it has to be loaded into memory
 const std = @import("std");
+
+const microzig = @import("../../../deps/microzig/build.zig");
+const PIO = microzig.chip.types.PIO0;
+const PIO0 = microzig.chip.peripherals.PIO0;
+const PIO1 = microzig.chip.peripherals.PIO1;
+
+pub const Join = enum {
+    none,
+    rx,
+    tx,
+};
+
+pub const Status = enum {
+    rx_lessthan,
+    tx_lessthan,
+};
+
+pub const Configuration = struct {
+    pin: u32,
+};
+
+pub const Pio = enum {
+    pio0,
+    pio1,
+
+    fn get_regs(self: Pio) *PIO {
+        return switch (self) {
+            .pio0 => PIO0,
+            .pio1 => PIO1,
+        };
+    }
+
+    pub fn load(self: Pio, bytecode: Bytecode) !void {
+        _ = self;
+        _ = bytecode;
+    }
+
+    // state machine configuration helpers:
+    //
+    // - set_out_pins
+    // - set_set_pins
+    // - set_in_pins
+    // - set_sideset_pins
+    // - set_sideset
+    // - set_clkdiv_int_frac
+    // - calculate_clkdiv_from_float
+    // - set_clkdiv
+    // - set_wrap
+    // - set_jmp_pin
+    // - set_in_shift
+    // - set_out_shift
+    // - set_fifo_join
+    // - set_out_special
+    // - set_mov_status
+    //
+    // PIO:
+    //
+    // - can_add_program
+    // - add_program_at_offset
+    // - add_program
+    // - remove_program
+    // - clear_instruction_memory
+    // -
+    //
+};
+
+// The assembler
+
+pub const Define = struct {
+    name: []const u8,
+    value: Value,
+
+    pub const Value = union(enum) {
+        integer: u32,
+        boolean: bool,
+        // TODO: more
+    };
+};
+
+pub const Program = struct {
+    name: []const u8,
+    defines: []const Define,
+    origin: ?u5,
+    side_set: ?u8,
+    wrap_target: u8,
+    wrap: u8,
+    instructions: std.BoundedArray(u16, 32),
+};
+
+//CompilationUnit?
+pub const Bytecode = struct {
+    defines: []const Define,
+    programs: []const Program,
+};
 
 pub const Parser = struct {
     data: []const u8,
@@ -9,6 +104,7 @@ pub const Parser = struct {
         wrap_target: void,
         wrap: void,
         label: []const u8,
+        program: []const u8,
         instruction: Instruction,
 
         pub const Instruction = struct {
@@ -181,6 +277,7 @@ pub const Parser = struct {
         _ = try self.skip_whitespaces();
         _ = try self.skip_newlines();
         _ = try self.skip_whitespaces();
+        std.log.err("done skipping", .{});
 
         if (self.get_character() == '.') {
             try self.consume(1);
@@ -188,30 +285,23 @@ pub const Parser = struct {
             var tokenizer = std.mem.tokenize(u8, macro, " ");
             const macro_name = tokenizer.next().?;
 
-            if (std.mem.eql(u8, macro_name, "side_set")) {
+            return if (std.mem.eql(u8, macro_name, "program")) blk: {
+                const name = tokenizer.next().?;
+                std.log.err("program found: {s}", .{name});
+                break :blk Token{ .program = name };
+            } else if (std.mem.eql(u8, macro_name, "side_set")) blk: {
                 var number = try std.fmt.parseInt(u8, tokenizer.next().?, 10);
-                return Token{ .side_set = number };
-            }
-
-            if (std.mem.eql(u8, macro_name, "wrap_target")) {
-                return Token{ .wrap_target = {} };
-            }
-
-            if (std.mem.eql(u8, macro_name, "wrap")) {
-                return Token{ .wrap = {} };
-            }
-            if (std.mem.eql(u8, macro_name, "wrap_target")) {
-                return Token{ .wrap_target = {} };
-            }
-
-            if (std.mem.eql(u8, macro_name, "lang_opt")) {
+                break :blk Token{ .side_set = number };
+            } else if (std.mem.eql(u8, macro_name, "wrap_target"))
+                Token{ .wrap_target = {} }
+            else if (std.mem.eql(u8, macro_name, "wrap"))
+                Token{ .wrap = {} }
+            else if (std.mem.eql(u8, macro_name, "lang_opt"))
                 // TODO: parse this
-                return try self.next();
-            }
-
+                try self.next()
+            else
+                @panic("unsupported macro");
             // TODO: .word
-
-            @panic("unsupported macro");
         }
 
         const identifier = (try self.parse_identifier()).?; // TODO: or mnemonic
@@ -490,106 +580,83 @@ pub const Parser = struct {
     }
 };
 
-const Assembler = struct {
-    parser: Parser,
+pub fn assemble(comptime code: []const u8) !Bytecode {
+    var parser = Parser.init(code);
+    var output = std.mem.zeroes(Program);
+    var instruction_index: u8 = 0;
+    var labels = std.mem.zeroes([32]?[]const u8);
+    var side_set: ?u8 = null;
+    var program_name: ?[]const u8 = null;
 
-    pub fn init(code: []const u8) Assembler {
-        return .{ .parser = Parser.init(code) };
+    var tokens = try std.BoundedArray(Parser.Token, 256).init(0);
+    while (try parser.next()) |token| {
+        std.log.err("token: {}", .{token});
+        try tokens.append(token);
     }
 
-    pub fn assemble(self: *Assembler) !Program {
-        var output = std.mem.zeroes(Program);
-        var instruction_index: u8 = 0;
-        var labels = std.mem.zeroes([32]?[]const u8);
-        var side_set: ?u8 = null;
+    // TODO: somehow do this in one pass
+    for (tokens.constSlice()) |token| {
+        switch (token) {
+            .program => |name| program_name = name,
 
-        var tokens = try std.BoundedArray(Parser.Token, 256).init(0);
-        while (try self.parser.next()) |token| {
-            try tokens.append(token);
+            .side_set => |v| {
+                std.debug.assert(side_set == null);
+                side_set = v;
+            },
+            .label => |v| labels[instruction_index] = v,
+            .instruction => {
+                instruction_index += 1;
+            },
+            else => {},
         }
-        
-
-        // TODO: somehow do this in one pass
-        for (tokens.constSlice()) |token| {
-            switch (token) {
-                .side_set => |v| {
-                    std.debug.assert(side_set == null);
-                    side_set = v;
-                },
-                .label => |v| labels[instruction_index] = v,
-                .instruction => {
-                    instruction_index += 1;
-                },
-                else => {},
-            }
-        }
-
-        instruction_index = 0;
-        for (tokens.constSlice()) |token| {
-            switch (token) {
-                .wrap_target => output.wrap_target = instruction_index,
-                .wrap => output.wrap = instruction_index,
-                .instruction => |i| {
-                    switch (i.payload) {
-                        .jmp => |jmp| {
-                            output.instructions[instruction_index] = try self.encode_jmp(&labels, jmp, side_set);
-                        },
-                        else => {},
-                    }
-                    instruction_index += 1;
-                },
-                else => {},
-            }
-        }
-        output.side_set = side_set;
-        output.instruction_count = instruction_index;
-        return output;
     }
 
-    fn encode_jmp(_: *Assembler, labels: *[32]?[]const u8, instruction: Parser.Token.Instruction.Jmp, program_side_set: ?u8) !u32 {
-        _ = program_side_set;
-        const address = blk: for (labels, 0..) |label, i| {
-            if (label) |l|
-                if (std.mem.eql(u8, l, instruction.label)) break :blk i;
-        } else @panic("label not found");
-        _ = address;
-
-        return 0;
+    instruction_index = 0;
+    for (tokens.constSlice()) |token| {
+        switch (token) {
+            .program => |name| program_name = name,
+            .wrap_target => output.wrap_target = instruction_index,
+            .wrap => output.wrap = instruction_index,
+            .instruction => |i| {
+                switch (i.payload) {
+                    .jmp => |jmp| try output.instructions.append(try encode_jmp(&labels, jmp, side_set)),
+                    else => {},
+                }
+                instruction_index += 1;
+            },
+            else => {},
+        }
     }
-
-    const Program = struct {
-        side_set: ?u8,
-        wrap_target: u8,
-        wrap: u8,
-        instructions: [32]u32, // TODO: cut the array to instruction_count to reduce flash usage
-        instruction_count: usize,
+    output.side_set = side_set;
+    output.name = program_name.?;
+    return Bytecode{
+        .programs = &.{output},
     };
-};
-
-const pio = struct {
-    pub fn compile(comptime code: []const u8) Assembler.Program {
-        return comptime blk: {
-            var assembler = Assembler.init(code);
-            break :blk assembler.assemble() catch unreachable;
-        };
-    }
-};
-
-comptime {
-    @setEvalBranchQuota(200000);
-    const program = pio.compile(
-        \\.side_set 1
-        \\.wrap_target
-        \\bitloop:
-        \\    out x, 1       side 0 [2]
-        \\    jmp !x do_zero side 1 [1]
-        \\do_one:
-        \\    jmp  bitloop   side 1 [4]
-        \\do_zero:
-        \\    nop            side 0 [4]
-        \\.wrap
-    );
-    @compileLog(program);
 }
 
-pub fn main() !void {}
+fn encode_jmp(labels: *[32]?[]const u8, instruction: Parser.Token.Instruction.Jmp, program_side_set: ?u8) !u16 {
+    _ = program_side_set;
+    const address = blk: for (labels, 0..) |label, i| {
+        if (label) |l|
+            if (std.mem.eql(u8, l, instruction.label)) break :blk i;
+    } else @panic("label not found");
+    _ = address;
+
+    return 0;
+}
+
+test "tokenize" {
+    var parser = Parser.init(@embedFile("pio/test/squarewave.pio"));
+
+    var tokens = try std.BoundedArray(Parser.Token, 256).init(0);
+    while (try parser.next()) |token| {
+        std.log.err("token: {}", .{token});
+        try tokens.append(token);
+    }
+
+    try std.testing.expect(tokens.slice()[0] == .program);
+}
+
+test "pio" {
+    //std.testing.refAllDecls(@import("pio/test.zig"));
+}

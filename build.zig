@@ -41,6 +41,16 @@ pub fn build(b: *Builder) !void {
     const optimize = b.standardOptimizeOption(.{});
     var examples = Examples.init(b, optimize);
     examples.install();
+
+    const pio_tests = b.addTest(.{
+        .root_source_file = .{
+            .path = "src/hal/pio.zig",
+        },
+    });
+    pio_tests.addIncludePath("src/hal/pio");
+
+    const test_step = b.step("test", "run unit tests");
+    test_step.dependOn(&pio_tests.step);
 }
 
 fn root() []const u8 {
