@@ -77,7 +77,7 @@ test "pio.comparison.differential_manchester" {
 
 test "pio.comparison.hello" {
     comptime {
-        @setEvalBranchQuota(2000);
+        @setEvalBranchQuota(3000);
         try pio_comparison(@embedFile("comparison_tests/hello.pio"));
     }
 }

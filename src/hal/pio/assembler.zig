@@ -33,7 +33,7 @@ pub const AssembleOptions = struct {
 
 pub fn assemble(comptime source: []const u8, comptime options: AssembleOptions) !Output {
     const tokens = try tokenize(source, options.tokenize);
-    return encode(tokens, options.encode);
+    return encode(tokens.slice(), options.encode);
 }
 
 //==============================================================================
@@ -388,8 +388,6 @@ const Tokenizer = struct {
     }
 
     fn consume_peek(self: *Tokenizer, result: PeekResult) void {
-        const n = result.start + @intCast(u32, result.str.len);
-        std.log.debug("index: {}, next: {}", .{ self.index, n });
         assert(self.index <= result.start);
         self.index = result.start + @intCast(u32, result.str.len);
     }
@@ -411,9 +409,6 @@ const Tokenizer = struct {
                 else => index.* += 1,
             }
         } else index.*;
-
-        if (start != end)
-            std.log.debug("peeked arg: '{s}'", .{self.source[start..end]});
 
         return if (start != end)
             PeekResult{
@@ -528,8 +523,7 @@ const Tokenizer = struct {
 
     fn value_from_string(str: []const u8) TokenizeError!Token.Value {
         return Token.Value{
-            .integer = std.fmt.parseInt(u32, str, 0) catch |err| {
-                std.log.debug("failed to parse: '{s}': {}", .{ str, err });
+            .integer = std.fmt.parseInt(u32, str, 0) catch {
                 return Token.Value{
                     .string = str,
                 };
@@ -631,7 +625,6 @@ const Tokenizer = struct {
 
     fn get_directive(self: *Tokenizer) !Token {
         const identifier = try self.read_until_whitespace_or_end();
-        std.log.debug("identifier: {s},", .{identifier});
         return if (directives.get(identifier)) |handler|
             try handler(self)
         else
@@ -853,7 +846,6 @@ const Tokenizer = struct {
         const destination = std.meta.stringToEnum(Token.Instruction.Mov.Destination, dest_str) orelse return error.InvalidDestination;
 
         const second = try self.get_arg() orelse return error.MissingArg;
-        std.log.debug("second: {s}", .{second});
         const op_prefixed: ?[]const u8 = if (std.mem.startsWith(u8, second, "!"))
             "!"
         else if (std.mem.startsWith(u8, second, "~"))
@@ -870,9 +862,8 @@ const Tokenizer = struct {
                 second[op_str.len..]
         else
             second;
-        std.log.debug("source str: {s}, op prefixed: {?s}", .{ source_str, op_prefixed });
-        const source = std.meta.stringToEnum(Token.Instruction.Mov.Source, source_str) orelse return error.InvalidSource;
 
+        const source = std.meta.stringToEnum(Token.Instruction.Mov.Source, source_str) orelse return error.InvalidSource;
         const operation: Token.Instruction.Mov.Operation = if (op_prefixed) |op_str|
             if (std.mem.eql(u8, "!", op_str))
                 .invert
@@ -942,7 +933,6 @@ const Tokenizer = struct {
         const dest_str = (try self.get_arg()) orelse return error.MissingArg;
         const value = try value_from_string((try self.get_arg()) orelse return error.MissingArg);
 
-        std.log.debug("dest: {s}", .{dest_str});
         return Token.Instruction.Payload{
             .set = .{
                 .destination = std.meta.stringToEnum(Token.Instruction.Set.Destination, dest_str) orelse return error.InvalidDestination,
@@ -965,7 +955,6 @@ const Tokenizer = struct {
     });
 
     fn get_instruction(self: *Tokenizer, name: []const u8) !Token {
-        std.log.debug("getting instruction", .{});
         var buf: [8]u8 = undefined;
         if (name.len > buf.len)
             return error.InvalidInstruction;
@@ -974,18 +963,13 @@ const Tokenizer = struct {
             buf[i] = c;
 
         const name_lower = buf[0..name.len];
-        std.log.debug("instruction: {s}", .{name_lower});
         const payload = if (instructions.get(name_lower)) |handler|
             try handler(self)
-        else {
-            std.log.debug("invalid instruction: {s}", .{name_lower});
+        else
             return error.InvalidInstruction;
-        };
 
         var side_set: ?u5 = null;
         var delay: ?u5 = null;
-
-        std.log.debug("side set: {}", .{self});
 
         // side set
         if (try self.peek_arg()) |result| if (eql_lower("side", result.str)) {
@@ -1076,10 +1060,6 @@ fn tokenize(
     var tokenizer = Tokenizer.init(source);
     while (try tokenizer.next()) |token|
         try tokens.append(token);
-
-    std.log.debug("tokens:", .{});
-    for (tokens.slice()) |token|
-        std.log.debug("token: {}", .{token});
 
     return tokens;
 }
@@ -1840,5 +1820,5 @@ test "tokenize.instr.side_set and delay" {
 }
 
 test "comparison" {
-    //std.testing.refAllDecls(@import("assembler/comparison_tests.zig"));
+    std.testing.refAllDecls(@import("assembler/comparison_tests.zig"));
 }
