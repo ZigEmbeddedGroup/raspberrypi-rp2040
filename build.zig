@@ -48,7 +48,7 @@ pub fn build(b: *Builder) !void {
         },
         .optimize = optimize,
     });
-    pio_tests.addIncludePath("src/hal/pio");
+    pio_tests.addIncludePath("src/hal/pio/assembler");
 
     const test_step = b.step("test", "run unit tests");
     test_step.dependOn(&pio_tests.run().step);

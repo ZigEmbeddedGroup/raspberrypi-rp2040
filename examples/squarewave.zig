@@ -6,23 +6,16 @@ const gpio = rp2040.gpio;
 const Pio = rp2040.pio.Pio;
 const StateMachine = rp2040.pio.StateMachine;
 
-const instructions = [_]u16{
-    0xe081,
-    0xe101,
-    0xe000,
-    0x0001,
-};
-
-//const squarewave_program = (rp2040.pio.assemble(
-//    \\.program squarewave
-//    \\    set pindirs, 1   ; Set pin to output
-//    \\again:
-//    \\    set pins, 1 [1]  ; Drive pin high and then delay for one cycle
-//    \\    set pins, 0      ; Drive pin low
-//    \\    jmp again        ; Set PC to label `again`
-//) catch
-//    @panic("failed to assemble program"))
-//    .get_program_by_name("squarewave");
+const squarewave_program = (rp2040.pio.assemble(
+    \\.program squarewave
+    \\    set pindirs, 1   ; Set pin to output
+    \\again:
+    \\    set pins, 1 [1]  ; Drive pin high and then delay for one cycle
+    \\    set pins, 0      ; Drive pin low
+    \\    jmp again        ; Set PC to label `again`
+) catch
+    @panic("failed to assemble program"))
+    .get_program_by_name("squarewave");
 
 pub fn main() void {
     // Pick one PIO instance arbitrarily. We're also arbitrarily picking state
@@ -34,7 +27,7 @@ pub fn main() void {
     // Load the assembled program directly into the PIO's instruction memory.
     // Each PIO instance has a 32-slot instruction memory, which all 4 state
     // machines can see. The system has write-only access.
-    for (instructions, 0..) |insn, i|
+    for (squarewave_program.instructions, 0..) |insn, i|
         pio.get_instruction_memory()[i] = insn;
 
     // Configure state machine 0 to run at sysclk/2.5. The state machines can
