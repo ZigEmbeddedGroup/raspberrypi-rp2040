@@ -51,12 +51,12 @@ pub const signatures = struct {
     /// Signature of memcpy44: Copies n bytes starting at src to dest and returns dest; must be word (32-bit) aligned!
     const memcpy44 = fn (dest: [*]u32, src: [*]u32, n: u32) [*]u8;
     /// Signature of connect_internal_flash: Restore all QSPI pad controls to their default state, and connect the SSI to the QSPI pads
-    const connect_internal_flash = fn (void) void;
+    const connect_internal_flash = fn () void;
     /// Signature of flash_exit_xip: First set up the SSI for serial-mode operations, then issue the fixed XIP exit sequence described in
     /// Section 2.8.1.2. Note that the bootrom code uses the IO forcing logic to drive the CS pin, which must be
     /// cleared before returning the SSI to XIP mode (e.g. by a call to _flash_flush_cache). This function
     /// configures the SSI with a fixed SCK clock divisor of /6.
-    const flash_exit_xip = fn (void) void;
+    const flash_exit_xip = fn () void;
     /// Signature of flash_range_erase: Erase a count bytes, starting at addr (offset from start of flash). Optionally, pass a block erase command
     /// e.g. D8h block erase, and the size of the block erased by this command — this function will use the larger
     /// block erase where possible, for much higher erase speed. addr must be aligned to a 4096-byte sector, and
@@ -67,13 +67,13 @@ pub const signatures = struct {
     const flash_range_program = fn (addr: u32, data: [*]const u8, count: usize) void;
     /// Signature of flash_flush_cache: Flush and enable the XIP cache. Also clears the IO forcing on QSPI CSn, so that the SSI can drive the
     /// flash chip select as normal.
-    const flash_flush_cache = fn (void) void;
+    const flash_flush_cache = fn () void;
     /// Signature of flash_enter_cmd_xip: Configure the SSI to generate a standard 03h serial read command, with 24 address bits, upon each XIP
     /// access. This is a very slow XIP configuration, but is very widely supported. The debugger calls this
     /// function after performing a flash erase/programming operation, so that the freshly-programmed code
     /// and data is visible to the debug host, without having to know exactly what kind of flash device is
     /// connected.
-    const flash_enter_cmd_xip = fn (void) void;
+    const flash_enter_cmd_xip = fn () void;
 };
 
 /// Return a bootrom lookup code based on two ASCII characters
@@ -205,15 +205,11 @@ pub fn memcpy(dest: []u8, src: []u8) []u8 {
 // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 /// Restore all QSPI pad controls to their default state, and connect the SSI to the QSPI pads
-pub fn connect_internal_flash() void {
-    const S = struct {
-        var f: ?*signatures.connect_internal_flash = null;
-    };
-    if (S.f == null) S.f = @ptrCast(
+pub inline fn connect_internal_flash() *signatures.connect_internal_flash {
+    return @ptrCast(
         *signatures.connect_internal_flash,
         _rom_func_lookup(Code.connect_internal_flash),
     );
-    S.f.?();
 }
 
 /// First set up the SSI for serial-mode operations, then issue the fixed XIP exit
@@ -221,15 +217,11 @@ pub fn connect_internal_flash() void {
 /// forcing logic to drive the CS pin, which must be cleared before returning the
 /// SSI to XIP mode (e.g. by a call to _flash_flush_cache). This function configures
 /// the SSI with a fixed SCK clock divisor of /6.
-pub fn flash_exit_xip() void {
-    const S = struct {
-        var f: ?*signatures.flash_exit_xip = null;
-    };
-    if (S.f == null) S.f = @ptrCast(
+pub inline fn flash_exit_xip() *signatures.flash_exit_xip {
+    return @ptrCast(
         *signatures.flash_exit_xip,
         _rom_func_lookup(Code.flash_exit_xip),
     );
-    S.f.?();
 }
 
 /// Erase a count bytes, starting at addr (offset from start of flash). Optionally,
@@ -237,42 +229,30 @@ pub fn flash_exit_xip() void {
 /// erased by this command — this function will use the larger block erase where
 /// possible, for much higher erase speed. addr must be aligned to a 4096-byte sector,
 /// and count must be a multiple of 4096 bytes.
-pub fn flash_range_erase(addr: u32, count: usize, block_size: u32, block_cmd: u8) void {
-    const S = struct {
-        var f: ?*signatures.flash_range_erase = null;
-    };
-    if (S.f == null) S.f = @ptrCast(
+pub inline fn flash_range_erase() *signatures.flash_range_erase {
+    return @ptrCast(
         *signatures.flash_range_erase,
         _rom_func_lookup(Code.flash_range_erase),
     );
-    S.f.?(addr, count, block_size, block_cmd);
 }
 
 /// Program data to a range of flash addresses starting at addr (offset from the
 /// start of flash) and count bytes in size. addr must be aligned to a 256-byte
 /// boundary, and the length of data must be a multiple of 256.
-pub fn flash_range_program(addr: u32, data: []const u8) void {
-    const S = struct {
-        var f: ?*signatures.flash_range_program = null;
-    };
-    if (S.f == null) S.f = @ptrCast(
+pub inline fn flash_range_program() *signatures.flash_range_program {
+    return @ptrCast(
         *signatures.flash_range_program,
         _rom_func_lookup(Code.flash_range_program),
     );
-    S.f.?(addr, data.ptr, data.len);
 }
 
 /// Flush and enable the XIP cache. Also clears the IO forcing on QSPI CSn, so that
 /// the SSI can drive the flash chip select as normal.
-pub fn flash_flush_cache() void {
-    const S = struct {
-        var f: ?*signatures.flash_flush_cache = null;
-    };
-    if (S.f == null) S.f = @ptrCast(
+pub inline fn flash_flush_cache() *signatures.flash_flush_cache {
+    return @ptrCast(
         *signatures.flash_flush_cache,
         _rom_func_lookup(Code.flash_flush_cache),
     );
-    S.f.?();
 }
 
 /// Configure the SSI to generate a standard 03h serial read command, with 24 address
@@ -281,13 +261,9 @@ pub fn flash_flush_cache() void {
 /// erase/programming operation, so that the freshly-programmed code and data is
 /// visible to the debug host, without having to know exactly what kind of flash
 /// device is connected.
-pub fn flash_enter_cmd_xip() void {
-    const S = struct {
-        var f: ?*signatures.flash_enter_cmd_xip = null;
-    };
-    if (S.f == null) S.f = @ptrCast(
+pub inline fn flash_enter_cmd_xip() *signatures.flash_enter_cmd_xip {
+    return @ptrCast(
         *signatures.flash_enter_cmd_xip,
         _rom_func_lookup(Code.flash_enter_cmd_xip),
     );
-    S.f.?();
 }
