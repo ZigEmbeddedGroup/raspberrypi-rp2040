@@ -1,0 +1,5 @@
+steps:
+  - group: Build and Test
+    steps:
+    - command: zig build test
+      label: 🔨 Build and Test
