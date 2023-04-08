@@ -8,6 +8,7 @@ const gpio = @import("gpio.zig");
 const clocks = @import("clocks.zig");
 const resets = @import("resets.zig");
 const time = @import("time.zig");
+const util = @import("util.zig");
 
 const SpiRegs = microzig.chip.types.peripherals.SPI0;
 
@@ -78,11 +79,11 @@ pub const SPI = enum {
         return spi;
     }
 
-    pub fn is_writable(spi: SPI) bool {
+    pub inline fn is_writable(spi: SPI) bool {
         return spi.get_regs().SSPSR.read().TNF == 1;
     }
 
-    pub fn is_readable(spi: SPI) bool {
+    pub inline fn is_readable(spi: SPI) bool {
         return spi.get_regs().SSPSR.read().RNE == 1;
     }
     pub fn transceive(spi: SPI, src: []const u8, dst: []u8) usize {
@@ -114,20 +115,20 @@ pub const SPI = enum {
         // push-on-full, but continues shifting. Safe if SSPIMSC_RORIM is not set.
         for (src) |s| {
             while (!spi.is_writable()) {
-                std.log.debug("SPI not writable!", .{});
+                util.tight_loop_contents();
             }
             spi_regs.SSPDR.write_raw(s);
         }
         // Drain RX FIFO, then wait for shifting to finish (which may be *after*
         // TX FIFO drains), then drain RX FIFO again
         while (spi.is_readable()) {
-            _ = spi_regs.SSPDR.raw;
+            _ = spi_regs.SSPDR.read();
         }
-        while (spi.get_regs().SSPSR.read().BSY == 1) {
-            std.log.debug("SPI busy!", .{});
+        while (spi_regs.SSPSR.read().BSY == 1) {
+            util.tight_loop_contents();
         }
         while (spi.is_readable()) {
-            _ = spi_regs.SSPDR.raw;
+            _ = spi_regs.SSPDR.read();
         }
         // Don't leave overrun flag set
         peripherals.SPI0.SSPICR.modify(.{ .RORIC = 1 });
