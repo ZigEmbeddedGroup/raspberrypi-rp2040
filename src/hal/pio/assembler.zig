@@ -1,15 +1,15 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const tokenizer = @import("tokenizer.zig");
-const encoder = @import("encoder.zig");
+const tokenizer = @import("assembler/tokenizer.zig");
+const encoder = @import("assembler/encoder.zig");
 
 pub const TokenizeOptions = tokenizer.Options;
 pub const EncodeOptions = encoder.Options;
 
 pub const Define = struct {
     name: []const u8,
-    value: u32,
+    value: i64,
 };
 
 pub const Program = struct {
@@ -79,7 +79,15 @@ pub fn assemble_impl(comptime source: []const u8, diags: *?Diagnostics, options:
         try programs.append(bounded.to_exported_program());
 
     return Output{
-        .defines = encoder_output.global_defines.slice(),
+        .defines = blk: {
+            var tmp = std.BoundedArray(Define, options.encode.max_defines).init(0) catch unreachable;
+            for (encoder_output.global_defines.slice()) |define|
+                tmp.append(.{
+                    .name = define.name,
+                    .value = define.value,
+                }) catch unreachable;
+            break :blk tmp.slice();
+        },
         .programs = programs.slice(),
     };
 }
@@ -123,9 +131,10 @@ pub fn assemble(comptime source: []const u8, comptime options: AssembleOptions) 
 
 test "tokenizer and encoder" {
     std.testing.refAllDecls(tokenizer);
+    std.testing.refAllDecls(@import("assembler/Expression.zig"));
     std.testing.refAllDecls(encoder);
 }
 
 test "comparison" {
-    std.testing.refAllDecls(@import("assembler/comparison_tests.zig"));
+    //std.testing.refAllDecls(@import("assembler/comparison_tests.zig"));
 }

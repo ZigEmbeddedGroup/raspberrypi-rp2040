@@ -1,11 +1,14 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const assembler = @import("assembler.zig");
+const assembler = @import("../assembler.zig");
 const Diagnostics = assembler.Diagnostics;
 
 const tokenizer = @import("tokenizer.zig");
 const Token = tokenizer.Token;
+const Value = tokenizer.Value;
+
+const Expression = @import("Expression.zig");
 
 pub const Options = struct {
     max_defines: u32 = 16,
@@ -27,6 +30,17 @@ pub const SideSet = struct {
     pindirs: bool,
 };
 
+pub const Define = struct {
+    name: []const u8,
+    value: i128,
+};
+
+pub const DefineWithIndex = struct {
+    name: []const u8,
+    value: i128,
+    index: u32,
+};
+
 pub fn Encoder(comptime options: Options) type {
     return struct {
         output: Self.Output,
@@ -40,7 +54,7 @@ pub fn Encoder(comptime options: Options) type {
             programs: BoundedPrograms,
         };
 
-        const BoundedDefines = std.BoundedArray(assembler.Define, options.max_defines);
+        const BoundedDefines = std.BoundedArray(DefineWithIndex, options.max_defines);
         const BoundedPrograms = std.BoundedArray(BoundedProgram, options.max_programs);
         const BoundedInstructions = std.BoundedArray(Instruction, 32);
         const BoundedLabels = std.BoundedArray(Label, 32);
@@ -61,10 +75,19 @@ pub fn Encoder(comptime options: Options) type {
             wrap_target: ?u5,
             wrap: ?u5,
 
-            pub fn to_exported_program(bounded: BoundedProgram) assembler.Program {
+            pub fn to_exported_program(comptime bounded: BoundedProgram) assembler.Program {
                 return assembler.Program{
                     .name = bounded.name,
-                    .defines = bounded.defines.slice(),
+                    .defines = blk: {
+                        var tmp = std.BoundedArray(assembler.Define, options.max_defines).init(0) catch unreachable;
+                        for (bounded.defines.slice()) |define|
+                            tmp.append(.{
+                                .name = define.name,
+                                .value = @intCast(i64, define.value),
+                            }) catch unreachable;
+
+                        break :blk tmp.slice();
+                    },
                     .instructions = @ptrCast([]const u16, bounded.instructions.slice()),
                     .origin = bounded.origin,
                     .side_set = bounded.side_set,
@@ -104,21 +127,65 @@ pub fn Encoder(comptime options: Options) type {
             self.index += count;
         }
 
-        fn evaluate_impl(
-            self: *Self,
-            comptime T: type,
-            define_lists: []const *const BoundedDefines,
-            value: Token.Value,
-        ) !T {
-            _ = self;
+        fn evaluate_expr(
+            define_lists: []const []const Define,
+            expr: []const u8,
+            index: u32,
+            diags: *?Diagnostics,
+        ) !i128 {
             _ = define_lists;
+            _ = expr;
+            _ = index;
+            _ = diags;
+        }
+
+        fn evaluate_impl(
+            comptime T: type,
+            define_lists: []const []const DefineWithIndex,
+            value: Value,
+            index: u32,
+            diags: *?Diagnostics,
+        ) !T {
             return switch (value) {
                 .integer => |int| @intCast(T, int),
-                .string => {
-                    // look up symbol in defines
-                    return error.TODO;
+                .string => |str| outer: for (define_lists) |defines| {
+                    for (defines) |define| {
+                        if (std.mem.eql(u8, str, define.name)) {
+                            if (define.value > std.math.maxInt(T)) {
+                                diags.* = Diagnostics.init(
+                                    index,
+                                    "{s}'s value ({}) is too large to fit in {} bits",
+                                    .{ str, define.value, @bitSizeOf(T) },
+                                );
+
+                                break :outer error.TooBig;
+                            }
+
+                            break :outer @intCast(T, define.value);
+                        }
+                    }
+                } else {
+                    diags.* = Diagnostics.init(index, "define '{s}' not found", .{
+                        str,
+                    });
+
+                    break :outer error.DefineNotFound;
                 },
-                else => error.TODO,
+                .expression => |expr_str| {
+                    const expr = try Expression.tokenize(expr_str, index, diags);
+                    const result = try expr.evaluate(define_lists, diags);
+                    if (result < 0 or result > std.math.maxInt(T)) {
+                        diags.* = Diagnostics.init(
+                            index,
+                            "value of {} does not fit in a u{}",
+                            .{
+                                result, @bitSizeOf(T),
+                            },
+                        );
+                    }
+
+                    return @intCast(T, result);
+                },
             };
         }
 
@@ -126,47 +193,54 @@ pub fn Encoder(comptime options: Options) type {
             self: *Self,
             comptime T: type,
             program: BoundedProgram,
-            value: Token.Value,
+            value: Value,
+            index: u32,
+            diags: *?Diagnostics,
         ) !T {
-            return self.evaluate_impl(T, &.{
-                &self.output.global_defines,
-                &self.output.private_defines,
-                &program.defines,
-                &program.private_defines,
-            }, value);
+            return evaluate_impl(T, &.{
+                self.output.global_defines.slice(),
+                self.output.private_defines.slice(),
+                program.defines.slice(),
+                program.private_defines.slice(),
+            }, value, index, diags);
         }
 
         fn evaluate_target(
             self: *Self,
             program: BoundedProgram,
-            value: Token.Value,
+            target: []const u8,
+            index: u32,
+            diags: *?Diagnostics,
         ) !u5 {
-            return switch (value) {
-                .integer, .expression => try self.evaluate(u5, program, value),
-                // the symbol looking up a string means checking labels
-                .string => |str| for (program.labels.slice()) |label| {
-                    if (std.mem.eql(u8, str, label.name))
-                        break label.index;
-                } else error.LabelNotFound,
-            };
+            return for (program.labels.slice()) |label| {
+                if (std.mem.eql(u8, target, label.name))
+                    break label.index;
+            } else try self.evaluate(u5, program, try Value.from_string(target), index, diags);
         }
 
-        fn evaluate_global(self: *Self, comptime T: type, value: Token.Value) !T {
-            return self.evaluate_impl(T, &.{
-                &self.output.global_defines,
-                &self.output.private_defines,
-            }, value);
+        fn evaluate_global(
+            self: *Self,
+            comptime T: type,
+            value: Value,
+            index: u32,
+            diags: *?Diagnostics,
+        ) !T {
+            return evaluate_impl(T, &.{
+                self.output.global_defines.slice(),
+                self.output.private_defines.slice(),
+            }, value, index, diags);
         }
 
-        fn encode_globals(self: *Self) !void {
+        fn encode_globals(self: *Self, diags: *?Diagnostics) !void {
             assert(self.index == 0);
 
             // read defines until program is had
             while (self.peek_token()) |token| switch (token.data) {
                 .define => |define| {
-                    const result = assembler.Define{
+                    const result = DefineWithIndex{
                         .name = define.name,
-                        .value = try self.evaluate_global(u32, define.value),
+                        .value = try self.evaluate_global(i128, define.value, token.index, diags),
+                        .index = define.index,
                     };
 
                     if (define.public)
@@ -181,14 +255,15 @@ pub fn Encoder(comptime options: Options) type {
             };
         }
 
-        fn encode_program_init(self: *Self, program: *BoundedProgram) !void {
+        fn encode_program_init(self: *Self, program: *BoundedProgram, diags: *?Diagnostics) !void {
             while (self.peek_token()) |token| {
                 switch (token.data) {
                     .program, .label, .instruction, .word, .wrap_target => break,
                     .define => |define| {
-                        const result = assembler.Define{
+                        const result = DefineWithIndex{
                             .name = define.name,
-                            .value = try self.evaluate(u32, program.*, define.value),
+                            .value = try self.evaluate(i128, program.*, define.value, token.index, diags),
+                            .index = define.index,
                         };
 
                         if (define.public)
@@ -199,19 +274,19 @@ pub fn Encoder(comptime options: Options) type {
                         self.consume(1);
                     },
                     .origin => |value| {
-                        program.origin = try self.evaluate(u5, program.*, value);
+                        program.origin = try self.evaluate(u5, program.*, value, token.index, diags);
                         self.consume(1);
                     },
                     .side_set => |side_set| {
                         program.side_set = .{
-                            .count = try self.evaluate(u3, program.*, side_set.count),
+                            .count = try self.evaluate(u3, program.*, side_set.count, token.index, diags),
                             .optional = side_set.opt,
                             .pindirs = side_set.pindirs,
                         };
                         self.consume(1);
                     },
                     // ignore
-                    .lang_opt => {},
+                    .lang_opt => self.consume(1),
                     .wrap => unreachable,
                 }
             }
@@ -236,14 +311,14 @@ pub fn Encoder(comptime options: Options) type {
                 .jmp => |jmp| .{
                     .jmp = .{
                         .condition = jmp.condition,
-                        .address = try self.evaluate_target(program.*, jmp.target),
+                        .address = try self.evaluate_target(program.*, jmp.target, token_index, diags),
                     },
                 },
                 .wait => |wait| .{
                     .wait = .{
                         .polarity = wait.polarity,
                         .source = wait.source,
-                        .index = try self.evaluate(u5, program.*, wait.num),
+                        .index = try self.evaluate(u5, program.*, wait.num, token_index, diags),
                     },
                 },
                 .in => |in| .{
@@ -277,19 +352,23 @@ pub fn Encoder(comptime options: Options) type {
                         .source = mov.source,
                     },
                 },
-                .irq => |irq| .{
-                    .irq = .{
-                        // TODO: what to do with rel?
-                        .clear = @boolToInt(irq.clear),
-                        .wait = @boolToInt(irq.wait),
-                        .index = irq.num,
-                    },
+                .irq => |irq| blk: {
+                    const irq_num = try self.evaluate(u5, program.*, irq.num, token_index, diags);
+                    break :blk .{
+                        .irq = .{
+                            .clear = @boolToInt(irq.clear),
+                            .wait = @boolToInt(irq.wait),
+                            .index = if (irq.rel)
+                                @as(u5, 0x10) | irq_num
+                            else
+                                irq_num,
+                        },
+                    };
                 },
                 .set => |set| .{
                     .set = .{
-                        // TODO: rel?
                         .destination = set.destination,
-                        .data = try self.evaluate(u5, program.*, set.value),
+                        .data = try self.evaluate(u5, program.*, set.value, token_index, diags),
                     },
                 },
             };
@@ -319,11 +398,20 @@ pub fn Encoder(comptime options: Options) type {
                 }
             }
 
+            const side_set: ?u5 = if (token.side_set) |s|
+                try self.evaluate(u5, program.*, s, token_index, diags)
+            else
+                null;
+
+            const delay: ?u5 = if (token.delay) |d|
+                try self.evaluate(u5, program.*, d, token_index, diags)
+            else
+                null;
+
             const delay_side_set = try calc_delay_side_set(
                 program.side_set,
-                token.side_set,
-                token.delay,
-                diags,
+                side_set,
+                delay,
             );
 
             try program.instructions.append(Instruction{
@@ -337,11 +425,8 @@ pub fn Encoder(comptime options: Options) type {
             program_settings: ?SideSet,
             side_set_opt: ?u5,
             delay_opt: ?u5,
-            diags: *?Diagnostics,
         ) !u5 {
-            // TODO: errors for too big values
-            _ = diags;
-            // errors for side set and delay sizes
+            // TODO: error for side_set/delay collision
             const delay: u5 = if (delay_opt) |delay| delay else 0;
             return if (program_settings) |settings|
                 if (settings.optional)
@@ -392,7 +477,7 @@ pub fn Encoder(comptime options: Options) type {
                 switch (token.data) {
                     .instruction => |instr| try self.encode_instruction(program, instr, token.index, diags),
                     .word => |word| try program.instructions.append(
-                        @bitCast(Instruction, try self.evaluate(u16, program.*, word)),
+                        @bitCast(Instruction, try self.evaluate(u16, program.*, word, token.index, diags)),
                     ),
                     // already processed
                     .label, .wrap_target, .wrap => {},
@@ -424,14 +509,14 @@ pub fn Encoder(comptime options: Options) type {
                 .wrap = null,
             };
 
-            try self.encode_program_init(&program);
+            try self.encode_program_init(&program, diags);
             try self.encode_instruction_body(&program, diags);
 
             return program;
         }
 
         fn encode_output(self: *Self, diags: *?Diagnostics) !Self.Output {
-            try self.encode_globals();
+            try self.encode_globals(diags);
 
             while (try self.encode_program(diags)) |program|
                 try self.output.programs.append(program);
@@ -553,7 +638,7 @@ test "encode.define" {
     try expectEqual(@as(usize, 0), output.programs.len);
 
     try expectEqualStrings("foo", output.private_defines.get(0).name);
-    try expectEqual(@as(u32, 5), output.private_defines.get(0).value);
+    try expectEqual(@as(i128, 5), output.private_defines.get(0).value);
 }
 
 test "encode.define.public" {
@@ -591,7 +676,7 @@ test "encode.program.define" {
 
     const define = program.private_defines.get(0);
     try expectEqualStrings("bruh", define.name);
-    try expectEqual(@as(u32, 7), define.value);
+    try expectEqual(@as(i128, 7), define.value);
 }
 
 test "encode.program.define.public" {
@@ -610,7 +695,7 @@ test "encode.program.define.public" {
 
     const define = program.defines.get(0);
     try expectEqualStrings("bruh", define.name);
-    try expectEqual(@as(u32, 7), define.value);
+    try expectEqual(@as(i128, 7), define.value);
 }
 
 test "encode.program.define.namespaced" {
@@ -631,7 +716,7 @@ test "encode.program.define.namespaced" {
 
     const define_bruh = program_arst.defines.get(0);
     try expectEqualStrings("bruh", define_bruh.name);
-    try expectEqual(@as(u32, 7), define_bruh.value);
+    try expectEqual(@as(i128, 7), define_bruh.value);
 
     const program_what = output.programs.get(1);
     try expectEqualStrings("what", program_what.name);
@@ -639,7 +724,7 @@ test "encode.program.define.namespaced" {
 
     const define_hi = program_what.defines.get(0);
     try expectEqualStrings("hi", define_hi.name);
-    try expectEqual(@as(u32, 8), define_hi.value);
+    try expectEqual(@as(i128, 8), define_hi.value);
 }
 
 test "encode.origin" {
@@ -809,37 +894,68 @@ test "encode.side_set.bits" {
     try expectEqual(@as(u5, 0x11), instr2.delay_side_set);
 }
 
-//test "encode.evaluate.target" {
-//    return error.TODO;
-//}
-//test "encode.evaluate.global" {
-//    return error.TODO;
-//}
-//test "encode.evaluate.integer" {
-//    return error.TODO;
-//}
-//test "encode.evaluate.addition" {
-//    return error.TODO;
-//}
-//test "encode.evaluate.subtraction" {
-//    return error.TODO;
-//}
-//test "encode.evaluate.multiplication" {
-//    return error.TODO;
-//}
-//test "encode.evaluate.division" {
-//    return error.TODO;
-//}
-//test "encode.evaluate.inversion" {
-//    return error.TODO;
-//}
-//test "encode.evaluate.bit reversal" {
-//    return error.TODO;
-//}
-//test "encode.evaluate.nested expression" {
-//    return error.TODO;
-//}
-//
+test "encode.evaluate.global" {
+    const output = try encode_bounded_output(
+        \\.define NUM 5
+        \\.define public FOO NUM
+    );
+
+    try expectEqual(@as(usize, 1), output.private_defines.len);
+    try expectEqual(@as(usize, 1), output.global_defines.len);
+    try expectEqualStrings("FOO", output.global_defines.get(0).name);
+    try expectEqual(@as(i128, 5), output.global_defines.get(0).value);
+}
+
+test "encode.evaluate.addition" {
+    const output = try encode_bounded_output(
+        \\.define public FOO (1+5)
+    );
+
+    try expectEqual(@as(usize, 1), output.global_defines.len);
+    try expectEqualStrings("FOO", output.global_defines.get(0).name);
+    try expectEqual(@as(i128, 6), output.global_defines.get(0).value);
+}
+
+test "encode.evaluate.subtraction" {
+    const output = try encode_bounded_output(
+        \\.define public FOO (5-1)
+    );
+
+    try expectEqual(@as(usize, 1), output.global_defines.len);
+    try expectEqualStrings("FOO", output.global_defines.get(0).name);
+    try expectEqual(@as(i128, 4), output.global_defines.get(0).value);
+}
+
+test "encode.evaluate.multiplication" {
+    const output = try encode_bounded_output(
+        \\.define public FOO (5*2)
+    );
+
+    try expectEqual(@as(usize, 1), output.global_defines.len);
+    try expectEqualStrings("FOO", output.global_defines.get(0).name);
+    try expectEqual(@as(i128, 10), output.global_defines.get(0).value);
+}
+
+test "encode.evaluate.division" {
+    const output = try encode_bounded_output(
+        \\.define public FOO (6/2)
+    );
+
+    try expectEqual(@as(usize, 1), output.global_defines.len);
+    try expectEqualStrings("FOO", output.global_defines.get(0).name);
+    try expectEqual(@as(i128, 3), output.global_defines.get(0).value);
+}
+
+test "encode.evaluate.bit reversal" {
+    const output = try encode_bounded_output(
+        \\.define public FOO ::1
+    );
+
+    try expectEqual(@as(usize, 1), output.global_defines.len);
+    try expectEqualStrings("FOO", output.global_defines.get(0).name);
+    try expectEqual(@as(i128, 0x80000000), output.global_defines.get(0).value);
+}
+
 test "encode.jmp.label" {
     const output = try encode_bounded_output(
         \\.program arst

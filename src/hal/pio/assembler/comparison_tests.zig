@@ -1,6 +1,6 @@
 const std = @import("std");
 const assembler = @import("../assembler.zig");
-const tokenizer = @import("../tokenizer.zig");
+const tokenizer = @import("tokenizer.zig");
 const c = @cImport({
     @cDefine("PICO_NO_HARDWARE", "1");
     @cInclude("stdint.h");
@@ -36,8 +36,11 @@ fn pio_comparison(comptime source: []const u8) !void {
 
     inline for (output.programs) |program| {
         const expected_insns = @field(c, program.name ++ "_program_instructions");
-        for (program.instructions, expected_insns) |actual, expected|
-            std.log.debug("expected: {x}, actual: {x}", .{ actual, expected });
+        for (program.instructions, expected_insns) |actual, expected| {
+            std.log.debug("expected: 0x{x}", .{expected});
+            std.log.debug("  actual: 0x{x}", .{actual});
+            std.log.debug("", .{});
+        }
 
         for (program.instructions, expected_insns) |actual, expected|
             try std.testing.expectEqual(expected, actual);
@@ -65,7 +68,7 @@ test "pio.comparison.clocked_input" {
 }
 
 test "pio.comparison.differential_manchester" {
-    @setEvalBranchQuota(13000);
+    @setEvalBranchQuota(14000);
     try pio_comparison(@embedFile("comparison_tests/differential_manchester.pio"));
 }
 
@@ -74,35 +77,35 @@ test "pio.comparison.hello" {
     try pio_comparison(@embedFile("comparison_tests/hello.pio"));
 }
 
-//test "pio.comparison.hub75" {
-//    @setEvalBranchQuota(16000);
-//    try pio_comparison(@embedFile("comparison_tests/hub75.pio"));
-//}
+test "pio.comparison.hub75" {
+    @setEvalBranchQuota(17000);
+    try pio_comparison(@embedFile("comparison_tests/hub75.pio"));
+}
 
 test "pio.comparison.i2c" {
-    @setEvalBranchQuota(16000);
+    @setEvalBranchQuota(17000);
     try pio_comparison(@embedFile("comparison_tests/i2c.pio"));
 }
 
 test "pio.comparison.manchester_encoding" {
-    @setEvalBranchQuota(10000);
+    @setEvalBranchQuota(11000);
     try pio_comparison(@embedFile("comparison_tests/manchester_encoding.pio"));
 }
 
-//test "pio.comparison.nec_carrier_burst" {
-//    @setEvalBranchQuota(6000);
-//    try pio_comparison(@embedFile("comparison_tests/nec_carrier_burst.pio"));
-//}
+test "pio.comparison.nec_carrier_burst" {
+    @setEvalBranchQuota(6000);
+    try pio_comparison(@embedFile("comparison_tests/nec_carrier_burst.pio"));
+}
 
-//test "pio.comparison.nec_carrier_control" {
-//    @setEvalBranchQuota(6000);
-//    try pio_comparison(@embedFile("comparison_tests/nec_carrier_control.pio"));
-//}
+test "pio.comparison.nec_carrier_control" {
+    @setEvalBranchQuota(9000);
+    try pio_comparison(@embedFile("comparison_tests/nec_carrier_control.pio"));
+}
 
-//test "pio.comparison.nec_receive" {
-//    @setEvalBranchQuota(10000);
-//    try pio_comparison(@embedFile("comparison_tests/nec_receive.pio"));
-//}
+test "pio.comparison.nec_receive" {
+    @setEvalBranchQuota(11000);
+    try pio_comparison(@embedFile("comparison_tests/nec_receive.pio"));
+}
 
 test "pio.comparison.pio_serialiser" {
     @setEvalBranchQuota(3000);
@@ -125,7 +128,7 @@ test "pio.comparison.resistor_dac" {
 }
 
 test "pio.comparison.spi" {
-    @setEvalBranchQuota(20000);
+    @setEvalBranchQuota(22000);
     try pio_comparison(@embedFile("comparison_tests/spi.pio"));
 }
 
@@ -159,7 +162,7 @@ test "pio.comparison.uart_tx" {
     try pio_comparison(@embedFile("comparison_tests/uart_tx.pio"));
 }
 
-//test "pio.comparison.ws2812" {
-//    @setEvalBranchQuota(5000);
-//    try pio_comparison(@embedFile("comparison_tests/ws2812.pio"));
-//}
+test "pio.comparison.ws2812" {
+    @setEvalBranchQuota(10000);
+    try pio_comparison(@embedFile("comparison_tests/ws2812.pio"));
+}

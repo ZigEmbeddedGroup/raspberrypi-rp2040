@@ -1,8 +1,10 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const assembler = @import("assembler.zig");
+const assembler = @import("../assembler.zig");
 const Diagnostics = assembler.Diagnostics;
+
+const Expression = @import("Expression.zig");
 
 pub const Options = struct {
     capacity: u32 = 256,
@@ -20,6 +22,39 @@ pub fn tokenize(
 
     return tokens;
 }
+
+pub const Value = union(enum) {
+    // integer, hex, binary
+    integer: u32,
+    // either a symbol or label
+    string: []const u8,
+    expression: []const u8,
+
+    pub fn format(
+        value: Value,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        switch (value) {
+            .string => |str| try writer.print("\"{s}\"", .{str}),
+            .expression => |expr| try writer.print("{s}", .{expr}),
+            .integer => |int| try writer.print("{}", .{int}),
+        }
+    }
+
+    pub fn from_string(str: []const u8) !Value {
+        return Value{
+            .integer = std.fmt.parseInt(u32, str, 0) catch {
+                return Value{
+                    .string = str,
+                };
+            },
+        };
+    }
+};
 
 // the characters we're interested in are:
 // ';' -> line comment
@@ -144,10 +179,10 @@ pub const Tokenizer = struct {
     }
 
     /// returns array of args
-    fn get_args(self: *Tokenizer, comptime num: u32) TokenizeError![num]?[]const u8 {
+    fn get_args(self: *Tokenizer, comptime num: u32, diags: *?Diagnostics) TokenizeError![num]?[]const u8 {
         var args: [num]?[]const u8 = undefined;
         for (&args) |*arg|
-            arg.* = try self.get_arg();
+            arg.* = try self.get_arg(diags);
 
         return args;
     }
@@ -157,9 +192,9 @@ pub const Tokenizer = struct {
         start: u32,
     };
 
-    fn peek_arg(self: *Tokenizer) TokenizeError!?PeekResult {
+    fn peek_arg(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!?PeekResult {
         var tmp_index = self.index;
-        return self.peek_arg_impl(&tmp_index);
+        return self.peek_arg_impl(&tmp_index, diags);
     }
 
     fn consume_peek(self: *Tokenizer, result: PeekResult) void {
@@ -168,7 +203,12 @@ pub const Tokenizer = struct {
     }
 
     /// gets next arg without consuming the stream
-    fn peek_arg_impl(self: *Tokenizer, index: *u32) TokenizeError!?PeekResult {
+    fn peek_arg_impl(
+        self: *Tokenizer,
+        index: *u32,
+        diags: *?Diagnostics,
+    ) TokenizeError!?PeekResult {
+
         // skip whitespace
         while (index.* < self.source.len) {
             switch (self.source[index.*]) {
@@ -177,13 +217,50 @@ pub const Tokenizer = struct {
             }
         }
 
+        if (index.* == self.source.len)
+            return null;
+
         const start = index.*;
-        const end = while (index.* < self.source.len) {
-            switch (self.source[index.*]) {
-                ' ', '\t', '\r', '\n', ',' => break index.*,
-                else => index.* += 1,
-            }
-        } else index.*;
+        const end = end: {
+            break :end switch (self.source[start]) {
+                '(' => blk: {
+                    var depth: u32 = 0;
+                    break :blk while (index.* < self.source.len) : (index.* += 1) {
+                        switch (self.source[index.*]) {
+                            '(' => depth += 1,
+                            ')' => {
+                                depth -= 1;
+
+                                if (depth == 0) {
+                                    index.* += 1;
+                                    break index.*;
+                                }
+                            },
+                            else => {},
+                        }
+                    } else {
+                        diags.* = Diagnostics.init(start, "mismatched parenthesis", .{});
+                        return error.InvalidExpression;
+                    };
+                },
+                '[' => while (index.* < self.source.len) : (index.* += 1) {
+                    if (self.source[index.*] == ']') {
+                        index.* += 1;
+                        break index.*;
+                    }
+                } else {
+                    diags.* = Diagnostics.init(start, "mismatched parenthesis", .{});
+                    return error.InvalidExpression;
+                },
+                else => while (index.* < self.source.len) {
+                    switch (self.source[index.*]) {
+                        // ; and / are to stop at comments
+                        ' ', '\t', '\r', '\n', ',', ';', '/' => break index.*,
+                        else => index.* += 1,
+                    }
+                } else index.*,
+            };
+        };
 
         return if (start != end)
             PeekResult{
@@ -194,8 +271,8 @@ pub const Tokenizer = struct {
             null;
     }
 
-    fn get_arg(self: *Tokenizer) TokenizeError!?[]const u8 {
-        return if (try self.peek_arg_impl(&self.index)) |result|
+    fn get_arg(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!?[]const u8 {
+        return if (try self.peek_arg_impl(&self.index, diags)) |result|
             result.str
         else
             null;
@@ -215,7 +292,6 @@ pub const Tokenizer = struct {
     }
 
     const TokenizeError = error{
-        TODO,
         EndOfStream,
         NoValue,
         NotAnExpression,
@@ -226,14 +302,18 @@ pub const Tokenizer = struct {
         MissingArg,
         InvalidDestination,
         InvalidOperation,
+        InvalidExpression,
         TooBig,
     };
 
-    fn get_program(self: *Tokenizer, index: u32) TokenizeError!Token {
-        const name = try self.get_identifier();
+    fn get_program(self: *Tokenizer, index: u32, diags: *?Diagnostics) TokenizeError!Token {
+        const name = (try self.get_arg(diags)) orelse {
+            diags.* = Diagnostics.init(index, "missing program name", .{});
+            return error.MissingArg;
+        };
         return Token{
             .index = index,
-            .data = .{ .program = name.str },
+            .data = .{ .program = name },
         };
     }
 
@@ -254,7 +334,7 @@ pub const Tokenizer = struct {
         return std.mem.eql(u8, &buf, lhs);
     }
 
-    fn get_define(self: *Tokenizer, index: u32) TokenizeError!Token {
+    fn get_define(self: *Tokenizer, index: u32, diags: *?Diagnostics) TokenizeError!Token {
         const maybe_public = try self.get_identifier();
         var is_public = eql_lower("public", maybe_public.str);
 
@@ -268,14 +348,20 @@ pub const Tokenizer = struct {
             .data = .{
                 .define = .{
                     .name = name.str,
-                    .value = try self.get_value(),
+                    .value = Value{
+                        .expression = (try self.get_arg(diags)) orelse {
+                            diags.* = Diagnostics.init(index, "failed to get expression", .{});
+                            return error.InvalidExpression;
+                        },
+                    },
                     .public = is_public,
+                    .index = name.index,
                 },
             },
         };
     }
 
-    fn get_expression(self: *Tokenizer) TokenizeError!Token.Value {
+    fn get_expression(self: *Tokenizer) TokenizeError!Value {
         const start = self.index;
         var count: u32 = 1;
 
@@ -293,7 +379,7 @@ pub const Tokenizer = struct {
             }
 
             if (count == 0) {
-                return Token.Value{
+                return Value{
                     .expression = self.source[start..self.index],
                 };
             }
@@ -302,17 +388,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    fn value_from_string(str: []const u8) TokenizeError!Token.Value {
-        return Token.Value{
-            .integer = std.fmt.parseInt(u32, str, 0) catch {
-                return Token.Value{
-                    .string = str,
-                };
-            },
-        };
-    }
-
-    fn get_value(self: *Tokenizer) TokenizeError!Token.Value {
+    fn get_value(self: *Tokenizer) TokenizeError!Value {
         self.skip_whitespace();
 
         if (self.peek()) |p|
@@ -320,13 +396,14 @@ pub const Tokenizer = struct {
                 return try self.get_expression()
             else {
                 const identifier = try self.get_identifier();
-                return try value_from_string(identifier.str);
+                return try Value.from_string(identifier.str);
             }
         else
             return error.NoValue;
     }
 
-    fn get_origin(self: *Tokenizer, index: u32) TokenizeError!Token {
+    fn get_origin(self: *Tokenizer, index: u32, diags: *?Diagnostics) TokenizeError!Token {
+        _ = diags;
         return Token{
             .index = index,
             .data = .{
@@ -335,9 +412,12 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_side_set(self: *Tokenizer, index: u32) TokenizeError!Token {
-        const args = try self.get_args(3);
-        const count = try value_from_string(args[0] orelse return error.MissingArg);
+    fn get_side_set(self: *Tokenizer, index: u32, diags: *?Diagnostics) TokenizeError!Token {
+        const args = try self.get_args(3, diags);
+        const count = try Value.from_string(args[0] orelse {
+            diags.* = Diagnostics.init(index, "missing count", .{});
+            return error.MissingArg;
+        });
         var opt = false;
         var pindirs = false;
 
@@ -358,30 +438,29 @@ pub const Tokenizer = struct {
             .data = .{
                 .side_set = .{
                     .count = count,
-                    // TODO
                     .opt = opt,
-                    // TODO
                     .pindirs = pindirs,
                 },
             },
         };
     }
 
-    fn get_wrap_target(_: *Tokenizer, index: u32) TokenizeError!Token {
+    fn get_wrap_target(_: *Tokenizer, index: u32, _: *?Diagnostics) TokenizeError!Token {
         return Token{
             .index = index,
             .data = .{ .wrap_target = {} },
         };
     }
 
-    fn get_wrap(_: *Tokenizer, index: u32) TokenizeError!Token {
+    fn get_wrap(_: *Tokenizer, index: u32, _: *?Diagnostics) TokenizeError!Token {
         return Token{
             .index = index,
             .data = .{ .wrap = {} },
         };
     }
 
-    fn get_lang_opt(self: *Tokenizer, index: u32) TokenizeError!Token {
+    fn get_lang_opt(self: *Tokenizer, index: u32, diags: *?Diagnostics) TokenizeError!Token {
+        _ = diags;
         return Token{
             .index = index,
             .data = .{
@@ -394,14 +473,15 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_word(self: *Tokenizer, index: u32) TokenizeError!Token {
+    fn get_word(self: *Tokenizer, index: u32, diags: *?Diagnostics) TokenizeError!Token {
+        _ = diags;
         return Token{
             .index = index,
             .data = .{ .word = try self.get_value() },
         };
     }
 
-    const directives = std.ComptimeStringMap(*const fn (*Tokenizer, u32) TokenizeError!Token, .{
+    const directives = std.ComptimeStringMap(*const fn (*Tokenizer, u32, *?Diagnostics) TokenizeError!Token, .{
         .{ "program", get_program },
         .{ "define", get_define },
         .{ "origin", get_origin },
@@ -412,23 +492,24 @@ pub const Tokenizer = struct {
         .{ "word", get_word },
     });
 
-    fn get_directive(self: *Tokenizer) !Token {
+    fn get_directive(self: *Tokenizer, diags: *?Diagnostics) !Token {
         const index = self.index;
         const identifier = try self.read_until_whitespace_or_end();
-        return if (directives.get(identifier)) |handler|
-            try handler(self, index)
-        else
-            error.InvalidDirective;
+        return if (directives.get(identifier)) |handler| ret: {
+            const ret = try handler(self, index, diags);
+            self.skip_line();
+            break :ret ret;
+        } else error.InvalidDirective;
     }
 
-    fn get_nop(_: *Tokenizer) TokenizeError!Token.Instruction.Payload {
+    fn get_nop(_: *Tokenizer, _: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
         return Token.Instruction.Payload{
             .nop = {},
         };
     }
 
     fn target_from_string(str: []const u8) TokenizeError!Token.Instruction.Jmp.Target {
-        const value = value_from_string(str);
+        const value = Value.from_string(str);
         return Token.Instruction.Payload{
             .jmp = .{
                 .condition = .always,
@@ -444,7 +525,7 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_jmp(self: *Tokenizer) TokenizeError!Token.Instruction.Payload {
+    fn get_jmp(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
         const Condition = Token.Instruction.Jmp.Condition;
         const conditions = std.ComptimeStringMap(Condition, .{
             .{ "!x", .x_is_zero },
@@ -456,26 +537,23 @@ pub const Tokenizer = struct {
             .{ "!osre", .osre_not_empty },
         });
 
-        const maybe_cond = (try self.get_arg()) orelse return error.MissingArg;
+        const maybe_cond = (try self.get_arg(diags)) orelse return error.MissingArg;
         const maybe_cond_lower = try lowercase_bounded(256, maybe_cond);
         const cond: Condition = conditions.get(maybe_cond_lower.slice()) orelse .always;
         const target_str = if (cond == .always)
             maybe_cond
         else
-            (try self.get_arg()) orelse return error.MissingArg;
+            (try self.get_arg(diags)) orelse return error.MissingArg;
 
         return Token.Instruction.Payload{
-            .jmp = .{
-                .condition = cond,
-                .target = try value_from_string(target_str),
-            },
+            .jmp = .{ .condition = cond, .target = target_str },
         };
     }
 
-    fn get_wait(self: *Tokenizer) TokenizeError!Token.Instruction.Payload {
-        const polarity = try std.fmt.parseInt(u1, (try self.get_arg()) orelse return error.MissingArg, 0);
-        const source_str = (try self.get_arg()) orelse return error.MissingArg;
-        const pin = try value_from_string((try self.get_arg()) orelse return error.MissingArg);
+    fn get_wait(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+        const polarity = try std.fmt.parseInt(u1, (try self.get_arg(diags)) orelse return error.MissingArg, 0);
+        const source_str = (try self.get_arg(diags)) orelse return error.MissingArg;
+        const pin = try Value.from_string((try self.get_arg(diags)) orelse return error.MissingArg);
 
         var buf: [8]u8 = undefined;
         for (source_str, 0..) |c, i|
@@ -493,7 +571,7 @@ pub const Tokenizer = struct {
             return error.InvalidSource;
 
         const rel: bool = if (source == .irq)
-            if (try self.peek_arg()) |rel_result| blk: {
+            if (try self.peek_arg(diags)) |rel_result| blk: {
                 const is_rel = std.mem.eql(u8, "rel", rel_result.str);
                 if (is_rel)
                     self.consume_peek(rel_result);
@@ -529,11 +607,11 @@ pub const Tokenizer = struct {
     // I need to keep in mind with `get_args()` is that I must only consume the
     // args that are used. side set and delay may be on the same line
 
-    fn get_in(self: *Tokenizer) TokenizeError!Token.Instruction.Payload {
-        const source_str = (try self.get_arg()) orelse return error.MissingArg;
-        const bit_count_str = (try self.get_arg()) orelse return error.MissingArg;
+    fn get_in(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+        const source_str = (try self.get_arg(diags)) orelse return error.MissingArg;
+        const bit_count_str = (try self.get_arg(diags)) orelse return error.MissingArg;
 
-        const source_lower = try lowercase_bounded(8, source_str);
+        const source_lower = try lowercase_bounded(256, source_str);
         const bit_count_tmp = try std.fmt.parseInt(u6, bit_count_str, 0);
         const bit_count = if (bit_count_tmp == 32)
             @as(u5, 0)
@@ -548,11 +626,11 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_out(self: *Tokenizer) TokenizeError!Token.Instruction.Payload {
-        const dest_src = (try self.get_arg()) orelse return error.MissingArg;
-        const bit_count_str = (try self.get_arg()) orelse return error.MissingArg;
+    fn get_out(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+        const dest_src = (try self.get_arg(diags)) orelse return error.MissingArg;
+        const bit_count_str = (try self.get_arg(diags)) orelse return error.MissingArg;
 
-        const dest_lower = try lowercase_bounded(8, dest_src);
+        const dest_lower = try lowercase_bounded(256, dest_src);
         const bit_count_tmp = try std.fmt.parseInt(u6, bit_count_str, 0);
         const bit_count = if (bit_count_tmp == 32)
             @as(u5, 0)
@@ -568,7 +646,7 @@ pub const Tokenizer = struct {
     }
 
     fn block_from_peek(self: *Tokenizer, result: PeekResult) TokenizeError!bool {
-        const block_lower = try lowercase_bounded(8, result.str);
+        const block_lower = try lowercase_bounded(256, result.str);
         const is_block = std.mem.eql(u8, "block", block_lower.slice());
         const is_noblock = std.mem.eql(u8, "noblock", block_lower.slice());
 
@@ -583,14 +661,14 @@ pub const Tokenizer = struct {
             true;
     }
 
-    fn get_push(self: *Tokenizer) TokenizeError!Token.Instruction.Payload {
-        return if (try self.peek_arg()) |first_result| ret: {
-            const lower = try lowercase_bounded(8, first_result.str);
+    fn get_push(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+        return if (try self.peek_arg(diags)) |first_result| ret: {
+            const lower = try lowercase_bounded(256, first_result.str);
             const iffull = std.mem.eql(u8, "iffull", lower.slice());
 
             const block: bool = if (iffull) blk: {
                 self.consume_peek(first_result);
-                break :blk if (try self.peek_arg()) |block_result|
+                break :blk if (try self.peek_arg(diags)) |block_result|
                     try self.block_from_peek(block_result)
                 else
                     true;
@@ -610,14 +688,14 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_pull(self: *Tokenizer) TokenizeError!Token.Instruction.Payload {
-        return if (try self.peek_arg()) |first_result| ret: {
-            const lower = try lowercase_bounded(8, first_result.str);
+    fn get_pull(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+        return if (try self.peek_arg(diags)) |first_result| ret: {
+            const lower = try lowercase_bounded(256, first_result.str);
             const ifempty = std.mem.eql(u8, "ifempty", lower.slice());
 
             const block: bool = if (ifempty) blk: {
                 self.consume_peek(first_result);
-                break :blk if (try self.peek_arg()) |block_result|
+                break :blk if (try self.peek_arg(diags)) |block_result|
                     try self.block_from_peek(block_result)
                 else
                     true;
@@ -637,12 +715,12 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_mov(self: *Tokenizer) TokenizeError!Token.Instruction.Payload {
-        const dest_str = (try self.get_arg()) orelse return error.MissingArg;
-        const dest_lower = try lowercase_bounded(8, dest_str);
+    fn get_mov(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+        const dest_str = (try self.get_arg(diags)) orelse return error.MissingArg;
+        const dest_lower = try lowercase_bounded(256, dest_str);
         const destination = std.meta.stringToEnum(Token.Instruction.Mov.Destination, dest_lower.slice()) orelse return error.InvalidDestination;
 
-        const second = try self.get_arg() orelse return error.MissingArg;
+        const second = try self.get_arg(diags) orelse return error.MissingArg;
         const op_prefixed: ?[]const u8 = if (std.mem.startsWith(u8, second, "!"))
             "!"
         else if (std.mem.startsWith(u8, second, "~"))
@@ -654,13 +732,13 @@ pub const Tokenizer = struct {
 
         const source_str = if (op_prefixed) |op_str|
             if (second.len == op_str.len)
-                (try self.get_arg()) orelse return error.MissingArg
+                (try self.get_arg(diags)) orelse return error.MissingArg
             else
                 second[op_str.len..]
         else
             second;
 
-        const source_lower = try lowercase_bounded(8, source_str);
+        const source_lower = try lowercase_bounded(256, source_str);
         const source = std.meta.stringToEnum(Token.Instruction.Mov.Source, source_lower.slice()) orelse return error.InvalidSource;
         const operation: Token.Instruction.Mov.Operation = if (op_prefixed) |op_str|
             if (std.mem.eql(u8, "!", op_str))
@@ -683,33 +761,39 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_irq(self: *Tokenizer) TokenizeError!Token.Instruction.Payload {
-        const first = (try self.get_arg()) orelse return error.MissingArg;
-
-        var has_mode = false;
-        const num = std.fmt.parseInt(u5, first, 0) catch blk: {
-            has_mode = true;
-            const num_str = (try self.get_arg()) orelse return error.MissingArg;
-            break :blk try std.fmt.parseInt(u5, num_str, 0);
-        };
+    fn get_irq(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+        const first = (try self.get_arg(diags)) orelse return error.MissingArg;
 
         var clear = false;
         var wait = false;
-        if (has_mode) {
-            const first_lower = try lowercase_bounded(8, first);
-            if (std.mem.eql(u8, "set", first_lower.slice())) {
-                // do nothing
-            } else if (std.mem.eql(u8, "nowait", first_lower.slice())) {
-                // do nothing
-            } else if (std.mem.eql(u8, "wait", first_lower.slice())) {
-                wait = true;
-            } else if (std.mem.eql(u8, "clear", first_lower.slice())) {
-                clear = true;
-            } else return error.InvalidSource;
+        var has_mode = false;
+        const first_lower = try lowercase_bounded(256, first);
+        if (std.mem.eql(u8, "set", first_lower.slice())) {
+            has_mode = true;
+            // do nothing
+        } else if (std.mem.eql(u8, "nowait", first_lower.slice())) {
+            has_mode = true;
+            // do nothing
+        } else if (std.mem.eql(u8, "wait", first_lower.slice())) {
+            has_mode = true;
+            wait = true;
+        } else if (std.mem.eql(u8, "clear", first_lower.slice())) {
+            has_mode = true;
+            clear = true;
         }
 
-        const rel: bool = if (try self.peek_arg()) |result| blk: {
-            const rel_lower = try lowercase_bounded(8, result.str);
+        const num = Value{
+            .expression = if (has_mode)
+                (try self.get_arg(diags)) orelse {
+                    diags.* = Diagnostics.init(self.index, "irq (mode) <num> (rel): failed to get num argument", .{});
+                    return error.MissingArg;
+                }
+            else
+                first,
+        };
+
+        const rel: bool = if (try self.peek_arg(diags)) |result| blk: {
+            const rel_lower = try lowercase_bounded(256, result.str);
             const is_rel = std.mem.eql(u8, "rel", rel_lower.slice());
             if (is_rel)
                 self.consume_peek(result);
@@ -727,11 +811,14 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_set(self: *Tokenizer) TokenizeError!Token.Instruction.Payload {
-        const dest_str = (try self.get_arg()) orelse return error.MissingArg;
-        const value = try value_from_string((try self.get_arg()) orelse return error.MissingArg);
+    fn get_set(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+        const dest_str = (try self.get_arg(diags)) orelse {
+            diags.* = Diagnostics.init(0, "missing destination", .{});
+            return error.MissingArg;
+        };
+        const value = try self.get_value();
 
-        const dest_lower = try lowercase_bounded(8, dest_str);
+        const dest_lower = try lowercase_bounded(256, dest_str);
 
         return Token.Instruction.Payload{
             .set = .{
@@ -741,7 +828,7 @@ pub const Tokenizer = struct {
         };
     }
 
-    const instructions = std.ComptimeStringMap(*const fn (*Tokenizer) TokenizeError!Token.Instruction.Payload, .{
+    const instructions = std.ComptimeStringMap(*const fn (*Tokenizer, *?Diagnostics) TokenizeError!Token.Instruction.Payload, .{
         .{ "nop", get_nop },
         .{ "jmp", get_jmp },
         .{ "wait", get_wait },
@@ -755,34 +842,44 @@ pub const Tokenizer = struct {
     });
 
     fn get_instruction(self: *Tokenizer, name: Identifier, diags: *?Diagnostics) !Token {
-        _ = diags;
-        const name_lower = try lowercase_bounded(8, name.str);
+        const name_lower = try lowercase_bounded(256, name.str);
         const payload = if (instructions.get(name_lower.slice())) |handler|
-            try handler(self)
-        else
+            try handler(self, diags)
+        else {
+            diags.* = Diagnostics.init(name.index, "invalid instruction", .{});
             return error.InvalidInstruction;
-
-        var side_set: ?u5 = null;
-        var delay: ?u5 = null;
-
-        // TODO: reverse location of side-set or delay
-
-        // side set
-        if (try self.peek_arg()) |result| if (eql_lower("side", result.str)) {
-            self.consume_peek(result);
-
-            const side_set_str = (try self.get_arg()) orelse return error.MissingArg;
-            // TODO: error message
-            side_set = try std.fmt.parseInt(u5, side_set_str, 0);
         };
 
-        // delay
-        if (try self.peek_arg()) |result|
-            if (std.mem.startsWith(u8, result.str, "[") and std.mem.endsWith(u8, result.str, "]")) {
+        var side_set: ?Value = null;
+        var delay: ?Value = null;
+
+        if (try self.peek_arg(diags)) |result| {
+            if (eql_lower("side", result.str)) {
                 self.consume_peek(result);
-                // TODO: error message
-                delay = try std.fmt.parseInt(u5, result.str[1 .. result.str.len - 1], 0);
-            };
+
+                const side_set_str = (try self.get_arg(diags)) orelse return error.MissingArg;
+                side_set = Value{ .expression = side_set_str };
+            } else if (std.mem.startsWith(u8, result.str, "[") and std.mem.endsWith(u8, result.str, "]")) {
+                self.consume_peek(result);
+                delay = Value{ .expression = result.str[1 .. result.str.len - 1] };
+            }
+        }
+
+        if (try self.peek_arg(diags)) |result| {
+            if (eql_lower("side", result.str)) {
+                self.consume_peek(result);
+
+                const side_set_str = (try self.get_arg(diags)) orelse return error.MissingArg;
+                assert(side_set == null);
+                side_set = Value{ .expression = side_set_str };
+            } else if (std.mem.startsWith(u8, result.str, "[") and std.mem.endsWith(u8, result.str, "]")) {
+                self.consume_peek(result);
+                assert(delay == null);
+                delay = Value{
+                    .expression = result.str[1 .. result.str.len - 1],
+                };
+            }
+        }
 
         self.skip_line();
         return Token{
@@ -819,7 +916,7 @@ pub const Tokenizer = struct {
                 },
                 '.' => {
                     self.consume(1);
-                    return try self.get_directive();
+                    return try self.get_directive(diags);
                 },
                 'a'...'z', 'A'...'Z', '0'...'9', '_' => {
                     const first = try self.get_identifier();
@@ -883,10 +980,10 @@ pub const Token = struct {
     // TODO: use Value instead of numbers
     pub const Instruction = struct {
         payload: Payload,
-        side_set: ?u5 = null,
+        side_set: ?Value = null,
         // TODO: delay can look like [T1-1], so we could consider the square
         // brackets to be an expression
-        delay: ?u5 = null,
+        delay: ?Value = null,
 
         pub const Payload = union(enum) {
             nop: void,
@@ -903,7 +1000,7 @@ pub const Token = struct {
 
         pub const Jmp = struct {
             condition: Condition,
-            target: Value,
+            target: []const u8,
 
             pub const Condition = enum(u3) {
                 always = 0b000,
@@ -1005,7 +1102,7 @@ pub const Token = struct {
         pub const Irq = struct {
             clear: bool,
             wait: bool,
-            num: u5,
+            num: Value,
             rel: bool,
         };
 
@@ -1022,33 +1119,11 @@ pub const Token = struct {
         };
     };
 
-    pub const Value = union(enum) {
-        // integer, hex, binary
-        integer: u32,
-        // either a symbol or label
-        string: []const u8,
-        expression: []const u8,
-
-        pub fn format(
-            value: Value,
-            comptime fmt: []const u8,
-            options: std.fmt.FormatOptions,
-            writer: anytype,
-        ) !void {
-            _ = fmt;
-            _ = options;
-            switch (value) {
-                .string => |str| try writer.print("\"{s}\"", .{str}),
-                .expression => |expr| try writer.print("{s}", .{expr}),
-                .integer => |int| try writer.print("{}", .{int}),
-            }
-        }
-    };
-
     pub const Define = struct {
         name: []const u8,
         value: Value,
         public: bool = false,
+        index: u32,
     };
 
     pub const SideSet = struct {
@@ -1080,12 +1155,21 @@ fn expect_program(expected: []const u8, actual: Token) !void {
     try expectEqualStrings(expected, actual.data.program);
 }
 
-fn expect_value(expected: Token.Value, actual: Token.Value) !void {
+fn expect_value(expected: Value, actual: Value) !void {
     switch (expected) {
         .integer => |int| try expectEqual(int, actual.integer),
         .string => |str| try expectEqualStrings(str, actual.string),
         .expression => |expr| try expectEqualStrings(expr, actual.expression),
     }
+}
+
+fn expect_opt_value(expected: ?Value, actual: ?Value) !void {
+    if (expected != null)
+        switch (expected.?) {
+            .integer => |int| try expectEqual(int, actual.?.integer),
+            .string => |str| try expectEqualStrings(str, actual.?.string),
+            .expression => |expr| try expectEqualStrings(expr, actual.?.expression),
+        };
 }
 
 fn expect_define(expected: Token.Define, actual: Token) !void {
@@ -1096,7 +1180,7 @@ fn expect_define(expected: Token.Define, actual: Token) !void {
     try expect_value(expected.value, define.value);
 }
 
-fn expect_origin(expected: Token.Value, actual: Token) !void {
+fn expect_origin(expected: Value, actual: Token) !void {
     try expectEqual(Token.Tag.origin, actual.data);
     try expect_value(expected, actual.data.origin);
 }
@@ -1127,7 +1211,7 @@ fn expect_lang_opt(expected: Token.LangOpt, actual: Token) !void {
     try expectEqualStrings(expected.option, lang_opt.option);
 }
 
-fn expect_word(expected: Token.Value, actual: Token) !void {
+fn expect_word(expected: Value, actual: Token) !void {
     try expectEqual(Token.Tag.word, actual.data);
     try expect_value(expected, actual.data.word);
 }
@@ -1141,8 +1225,8 @@ fn expect_label(expected: Token.Label, actual: Token) !void {
 }
 
 const ExpectedNopInstr = struct {
-    delay: ?u5 = null,
-    side_set: ?u5 = null,
+    delay: ?Value = null,
+    side_set: ?Value = null,
 };
 
 fn expect_instr_nop(expected: ExpectedNopInstr, actual: Token) !void {
@@ -1150,15 +1234,15 @@ fn expect_instr_nop(expected: ExpectedNopInstr, actual: Token) !void {
     try expectEqual(PayloadTag.nop, actual.data.instruction.payload);
 
     const instr = actual.data.instruction;
-    try expectEqual(expected.delay, instr.delay);
-    try expectEqual(expected.side_set, instr.side_set);
+    try expect_opt_value(expected.delay, instr.delay);
+    try expect_opt_value(expected.side_set, instr.side_set);
 }
 
 const ExpectedSetInstr = struct {
     dest: Token.Instruction.Set.Destination,
-    value: Token.Value,
-    delay: ?u5 = null,
-    side_set: ?u5 = null,
+    value: Value,
+    delay: ?Value = null,
+    side_set: ?Value = null,
 };
 
 fn expect_instr_set(expected: ExpectedSetInstr, actual: Token) !void {
@@ -1166,8 +1250,8 @@ fn expect_instr_set(expected: ExpectedSetInstr, actual: Token) !void {
     try expectEqual(PayloadTag.set, actual.data.instruction.payload);
 
     const instr = actual.data.instruction;
-    try expectEqual(expected.side_set, instr.side_set);
-    try expectEqual(expected.delay, instr.delay);
+    try expect_opt_value(expected.delay, instr.delay);
+    try expect_opt_value(expected.side_set, instr.side_set);
 
     const set = instr.payload.set;
     try expectEqual(expected.dest, set.destination);
@@ -1176,9 +1260,9 @@ fn expect_instr_set(expected: ExpectedSetInstr, actual: Token) !void {
 
 const ExpectedJmpInstr = struct {
     cond: Token.Instruction.Jmp.Condition = .always,
-    target: Token.Value,
-    delay: ?u5 = null,
-    side_set: ?u5 = null,
+    target: []const u8,
+    delay: ?Value = null,
+    side_set: ?Value = null,
 };
 
 fn expect_instr_jmp(expected: ExpectedJmpInstr, actual: Token) !void {
@@ -1186,22 +1270,22 @@ fn expect_instr_jmp(expected: ExpectedJmpInstr, actual: Token) !void {
     try expectEqual(PayloadTag.jmp, actual.data.instruction.payload);
 
     const instr = actual.data.instruction;
-    try expectEqual(expected.side_set, instr.side_set);
-    try expectEqual(expected.delay, instr.delay);
+    try expect_opt_value(expected.delay, instr.delay);
+    try expect_opt_value(expected.side_set, instr.side_set);
 
     const jmp = instr.payload.jmp;
     try expectEqual(expected.cond, jmp.condition);
-    try expect_value(expected.target, jmp.target);
+    try expectEqualStrings(expected.target, jmp.target);
 }
 
 const ExpectedWaitInstr = struct {
     polarity: u1,
     source: Token.Instruction.Wait.Source,
-    num: Token.Value,
+    num: Value,
     // only valid for irq source
     rel: bool = false,
-    delay: ?u5 = null,
-    side_set: ?u5 = null,
+    delay: ?Value = null,
+    side_set: ?Value = null,
 };
 
 fn expect_instr_wait(expected: ExpectedWaitInstr, actual: Token) !void {
@@ -1209,8 +1293,8 @@ fn expect_instr_wait(expected: ExpectedWaitInstr, actual: Token) !void {
     try expectEqual(PayloadTag.wait, actual.data.instruction.payload);
 
     const instr = actual.data.instruction;
-    try expectEqual(expected.side_set, instr.side_set);
-    try expectEqual(expected.delay, instr.delay);
+    try expect_opt_value(expected.delay, instr.delay);
+    try expect_opt_value(expected.side_set, instr.side_set);
 
     const wait = instr.payload.wait;
     try expectEqual(expected.polarity, wait.polarity);
@@ -1221,8 +1305,8 @@ fn expect_instr_wait(expected: ExpectedWaitInstr, actual: Token) !void {
 const ExpectedInInstr = struct {
     source: Token.Instruction.In.Source,
     bit_count: u5,
-    delay: ?u5 = null,
-    side_set: ?u5 = null,
+    delay: ?Value = null,
+    side_set: ?Value = null,
 };
 
 fn expect_instr_in(expected: ExpectedInInstr, actual: Token) !void {
@@ -1230,8 +1314,8 @@ fn expect_instr_in(expected: ExpectedInInstr, actual: Token) !void {
     try expectEqual(PayloadTag.in, actual.data.instruction.payload);
 
     const instr = actual.data.instruction;
-    try expectEqual(expected.side_set, instr.side_set);
-    try expectEqual(expected.delay, instr.delay);
+    try expect_opt_value(expected.delay, instr.delay);
+    try expect_opt_value(expected.side_set, instr.side_set);
 
     const in = instr.payload.in;
     try expectEqual(expected.source, in.source);
@@ -1241,8 +1325,8 @@ fn expect_instr_in(expected: ExpectedInInstr, actual: Token) !void {
 const ExpectedOutInstr = struct {
     destination: Token.Instruction.Out.Destination,
     bit_count: u5,
-    delay: ?u5 = null,
-    side_set: ?u5 = null,
+    delay: ?Value = null,
+    side_set: ?Value = null,
 };
 
 fn expect_instr_out(expected: ExpectedOutInstr, actual: Token) !void {
@@ -1250,8 +1334,8 @@ fn expect_instr_out(expected: ExpectedOutInstr, actual: Token) !void {
     try expectEqual(PayloadTag.out, actual.data.instruction.payload);
 
     const instr = actual.data.instruction;
-    try expectEqual(expected.side_set, instr.side_set);
-    try expectEqual(expected.delay, instr.delay);
+    try expect_opt_value(expected.delay, instr.delay);
+    try expect_opt_value(expected.side_set, instr.side_set);
 
     const out = instr.payload.out;
     try expectEqual(expected.destination, out.destination);
@@ -1261,8 +1345,8 @@ fn expect_instr_out(expected: ExpectedOutInstr, actual: Token) !void {
 const ExpectedPushInstr = struct {
     block: bool = true,
     iffull: bool = false,
-    delay: ?u5 = null,
-    side_set: ?u5 = null,
+    delay: ?Value = null,
+    side_set: ?Value = null,
 };
 
 fn expect_instr_push(expected: ExpectedPushInstr, actual: Token) !void {
@@ -1270,8 +1354,8 @@ fn expect_instr_push(expected: ExpectedPushInstr, actual: Token) !void {
     try expectEqual(PayloadTag.push, actual.data.instruction.payload);
 
     const instr = actual.data.instruction;
-    try expectEqual(expected.side_set, instr.side_set);
-    try expectEqual(expected.delay, instr.delay);
+    try expect_opt_value(expected.delay, instr.delay);
+    try expect_opt_value(expected.side_set, instr.side_set);
 
     const push = instr.payload.push;
     try expectEqual(expected.block, push.block);
@@ -1281,8 +1365,8 @@ fn expect_instr_push(expected: ExpectedPushInstr, actual: Token) !void {
 const ExpectedPullInstr = struct {
     block: bool = true,
     ifempty: bool = false,
-    delay: ?u5 = null,
-    side_set: ?u5 = null,
+    delay: ?Value = null,
+    side_set: ?Value = null,
 };
 
 fn expect_instr_pull(expected: ExpectedPullInstr, actual: Token) !void {
@@ -1290,8 +1374,8 @@ fn expect_instr_pull(expected: ExpectedPullInstr, actual: Token) !void {
     try expectEqual(PayloadTag.pull, actual.data.instruction.payload);
 
     const instr = actual.data.instruction;
-    try expectEqual(expected.side_set, instr.side_set);
-    try expectEqual(expected.delay, instr.delay);
+    try expect_opt_value(expected.delay, instr.delay);
+    try expect_opt_value(expected.side_set, instr.side_set);
 
     const pull = instr.payload.pull;
     try expectEqual(expected.block, pull.block);
@@ -1302,8 +1386,8 @@ const ExpectedMovInstr = struct {
     source: Token.Instruction.Mov.Source,
     destination: Token.Instruction.Mov.Destination,
     operation: Token.Instruction.Mov.Operation = .none,
-    delay: ?u5 = null,
-    side_set: ?u5 = null,
+    delay: ?Value = null,
+    side_set: ?Value = null,
 };
 
 fn expect_instr_mov(expected: ExpectedMovInstr, actual: Token) !void {
@@ -1311,8 +1395,8 @@ fn expect_instr_mov(expected: ExpectedMovInstr, actual: Token) !void {
     try expectEqual(PayloadTag.mov, actual.data.instruction.payload);
 
     const instr = actual.data.instruction;
-    try expectEqual(expected.side_set, instr.side_set);
-    try expectEqual(expected.delay, instr.delay);
+    try expect_opt_value(expected.delay, instr.delay);
+    try expect_opt_value(expected.side_set, instr.side_set);
 
     const mov = instr.payload.mov;
     try expectEqual(expected.source, mov.source);
@@ -1325,8 +1409,8 @@ const ExpectedIrqInstr = struct {
     wait: bool,
     num: u5,
     rel: bool = false,
-    delay: ?u5 = null,
-    side_set: ?u5 = null,
+    delay: ?Value = null,
+    side_set: ?Value = null,
 };
 
 fn expect_instr_irq(expected: ExpectedIrqInstr, actual: Token) !void {
@@ -1334,8 +1418,8 @@ fn expect_instr_irq(expected: ExpectedIrqInstr, actual: Token) !void {
     try expectEqual(PayloadTag.irq, actual.data.instruction.payload);
 
     const instr = actual.data.instruction;
-    try expectEqual(expected.side_set, instr.side_set);
-    try expectEqual(expected.delay, instr.delay);
+    try expect_opt_value(expected.delay, instr.delay);
+    try expect_opt_value(expected.side_set, instr.side_set);
 
     const irq = instr.payload.irq;
     try expectEqual(expected.clear, irq.clear);
@@ -1402,7 +1486,8 @@ test "tokenize.directive.define" {
 
     try expect_define(.{
         .name = "symbol_name",
-        .value = .{ .integer = 1 },
+        .value = .{ .expression = "1" },
+        .index = 8,
     }, tokens.get(0));
 }
 
@@ -1411,8 +1496,9 @@ test "tokenize.directive.define.public" {
 
     try expect_define(.{
         .name = "symbol_name",
-        .value = .{ .integer = 1 },
+        .value = .{ .expression = "0x1" },
         .public = true,
+        .index = 15,
     }, tokens.get(0));
 }
 
@@ -1424,12 +1510,14 @@ test "tokenize.directive.define.with expression" {
 
     try expect_define(.{
         .name = "symbol_name",
-        .value = .{ .integer = 1 },
+        .value = .{ .expression = "0x1" },
+        .index = 8,
     }, tokens.get(0));
 
     try expect_define(.{
         .name = "something",
         .value = .{ .expression = "(symbol_name * 2)" },
+        .index = 32,
     }, tokens.get(1));
 }
 
@@ -1490,12 +1578,12 @@ test "tokenize.instr.nop" {
 
 test "tokenize.instr.jmp.label" {
     const tokens = try bounded_tokenize("jmp my_label");
-    try expect_instr_jmp(.{ .target = .{ .string = "my_label" } }, tokens.get(0));
+    try expect_instr_jmp(.{ .target = "my_label" }, tokens.get(0));
 }
 
 test "tokenize.instr.jmp.value" {
     const tokens = try bounded_tokenize("jmp 0x2");
-    try expect_instr_jmp(.{ .target = .{ .integer = 2 } }, tokens.get(0));
+    try expect_instr_jmp(.{ .target = "0x2" }, tokens.get(0));
 }
 
 test "tokenize.instr.jmp.conditions" {
@@ -1515,9 +1603,7 @@ test "tokenize.instr.jmp.conditions" {
         const cond = case.value;
         const tokens = try bounded_tokenize(std.fmt.comptimePrint("jmp {s} my_label", .{op}));
 
-        try expect_instr_jmp(.{ .cond = cond, .target = .{
-            .string = "my_label",
-        } }, tokens.get(0));
+        try expect_instr_jmp(.{ .cond = cond, .target = "my_label" }, tokens.get(0));
     }
 }
 
@@ -1753,6 +1839,14 @@ test "tokenize.instr.set" {
     }
 }
 
+test "tokenize.instr.set.with expression including define" {
+    const tokens = try bounded_tokenize("set X, (NUM_CYCLES - 1)         ; initialise the loop counter");
+    try expect_instr_set(.{
+        .dest = .x,
+        .value = .{ .expression = "(NUM_CYCLES - 1)" },
+    }, tokens.get(0));
+}
+
 const instruction_examples = .{
     "nop",
     "jmp arst",
@@ -1778,8 +1872,10 @@ test "tokenize.instr.side_set" {
     inline for (instruction_examples) |instr| {
         const tokens = try bounded_tokenize(std.fmt.comptimePrint("{s} side 0", .{instr}));
         const token = tokens.get(0);
-        try expectEqual(@as(?u5, 0), token.data.instruction.side_set);
-        try expectEqual(@as(?u5, null), token.data.instruction.delay);
+        try expect_value(.{
+            .expression = "0",
+        }, token.data.instruction.side_set.?);
+        try expectEqual(@as(?Value, null), token.data.instruction.delay);
     }
 }
 
@@ -1787,8 +1883,32 @@ test "tokenize.instr.delay" {
     inline for (instruction_examples) |instr| {
         const tokens = try bounded_tokenize(std.fmt.comptimePrint("{s} [1]", .{instr}));
         const token = tokens.get(0);
-        try expectEqual(@as(?u5, null), token.data.instruction.side_set);
-        try expectEqual(@as(?u5, 1), token.data.instruction.delay);
+        try expectEqual(@as(?Value, null), token.data.instruction.side_set);
+        try expect_value(.{
+            .expression = "1",
+        }, token.data.instruction.delay.?);
+    }
+}
+
+test "tokenize.instr.delay.expression" {
+    inline for (instruction_examples) |instr| {
+        const tokens = try bounded_tokenize(std.fmt.comptimePrint("{s} [T-1]", .{instr}));
+        const token = tokens.get(0);
+        try expectEqual(@as(?Value, null), token.data.instruction.side_set);
+        try expect_value(.{
+            .expression = "T-1",
+        }, token.data.instruction.delay.?);
+    }
+}
+
+test "tokenize.instr.side_set.expression" {
+    inline for (instruction_examples) |instr| {
+        const tokens = try bounded_tokenize(std.fmt.comptimePrint("{s} side (N-1)", .{instr}));
+        const token = tokens.get(0);
+        try expect_value(.{
+            .expression = "(N-1)",
+        }, token.data.instruction.side_set.?);
+        try expectEqual(@as(?Value, null), token.data.instruction.delay);
     }
 }
 
@@ -1796,7 +1916,32 @@ test "tokenize.instr.side_set and delay" {
     inline for (instruction_examples) |instr| {
         const tokens = try bounded_tokenize(std.fmt.comptimePrint("{s} side 1 [2]", .{instr}));
         const token = tokens.get(0);
-        try expectEqual(@as(?u5, 1), token.data.instruction.side_set);
-        try expectEqual(@as(?u5, 2), token.data.instruction.delay);
+        try expect_value(.{
+            .expression = "1",
+        }, token.data.instruction.side_set.?);
+        try expect_value(.{
+            .expression = "2",
+        }, token.data.instruction.delay.?);
     }
+}
+
+test "tokenize.instr.side_set and delay reversed" {
+    inline for (instruction_examples) |instr| {
+        const tokens = try bounded_tokenize(std.fmt.comptimePrint("{s} [2] side 1", .{instr}));
+        const token = tokens.get(0);
+        try expect_value(.{
+            .expression = "1",
+        }, token.data.instruction.side_set.?);
+        try expect_value(.{
+            .expression = "2",
+        }, token.data.instruction.delay.?);
+    }
+}
+
+test "tokenize.instr.comment with no whitespace" {
+    const tokens = try bounded_tokenize("nop side 0x0 [1]; CSn front porch");
+    try expect_instr_nop(.{
+        .side_set = .{ .expression = "0x0" },
+        .delay = .{ .expression = "1" },
+    }, tokens.get(0));
 }
