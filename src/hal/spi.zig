@@ -107,7 +107,7 @@ pub const SPI = enum {
 
         return src.len;
     }
-    // Write len bytes directly from src to the SPI, and discard any data received back
+    /// Write len bytes directly from src to the SPI, and discard any data received back
     pub fn write(spi: SPI, src: []const u8) usize {
         const spi_regs = spi.get_regs();
         // Write to TX FIFO whilst ignoring RX, then clean up afterward. When RX
@@ -135,6 +135,30 @@ pub const SPI = enum {
         return src.len;
     }
 
+    /// Read len bytes directly from the SPI to dst.
+    /// repeated_tx_data is output repeatedly on SO as data is read in from SI.
+    /// Generally this can be 0, but some devices require a specific value here,
+    /// e.g. SD cards expect 0xff
+    pub fn read(spi: SPI, repeated_tx_data: u8, dst: []u8) usize {
+        const spi_regs = spi.get_regs();
+        const fifo_depth = 8;
+        var rx_remaining = dst.len;
+        var tx_remaining = dst.len;
+
+        while (rx_remaining > 0 or tx_remaining > 0) {
+            if (tx_remaining > 0 and spi.is_writable() and rx_remaining < tx_remaining + fifo_depth) {
+                spi_regs.SSPDR.write_raw(repeated_tx_data);
+                tx_remaining -= 1;
+            }
+            if (rx_remaining > 0 and spi.is_readable()) {
+                const bytes = std.mem.asBytes(&spi_regs.SSPDR.read().DATA);
+                dst[dst.len - rx_remaining] = bytes[0];
+                rx_remaining -= 1;
+            }
+        }
+        return dst.len;
+    }
+
     fn set_baudrate(spi: SPI, baudrate: u32, freq_in: u32) u64 {
         const spi_regs = spi.get_regs();
         // Find smallest prescale value which puts output frequency in range of
@@ -144,9 +168,9 @@ pub const SPI = enum {
             if (freq_in < (prescale + 2) * 256 * baudrate) break;
         }
         std.debug.assert(prescale <= 254); //Freq too low
+
         // Find largest post-divide which makes output <= baudrate. Post-divide is
         // an integer in the range 1 to 256 inclusive.
-
         var postdiv: u64 = 256;
         while (postdiv > 1) : (postdiv -= 1) {
             if (freq_in / (prescale * (postdiv - 1)) > baudrate) break;
