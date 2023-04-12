@@ -39,8 +39,8 @@ pub fn addPiPicoExecutable(
 // project requires multiple HALs, it accepts microzig as a param
 pub fn build(b: *Builder) !void {
     const optimize = b.standardOptimizeOption(.{});
-    //var examples = Examples.init(b, optimize);
-    //examples.install();
+    var examples = Examples.init(b, optimize);
+    examples.install();
 
     const pio_tests = b.addTest(.{
         .root_source_file = .{
@@ -66,9 +66,11 @@ pub const Examples = struct {
     pwm: *microzig.EmbeddedExecutable,
     spi_master: *microzig.EmbeddedExecutable,
     uart: *microzig.EmbeddedExecutable,
-    squarewave: *microzig.EmbeddedExecutable,
+    //squarewave: *microzig.EmbeddedExecutable, <-- compiler error
     //uart_pins: microzig.EmbeddedExecutable,
     flash_program: *microzig.EmbeddedExecutable,
+    usb_device: *microzig.EmbeddedExecutable,
+    usb_hid: *microzig.EmbeddedExecutable,
 
     pub fn init(b: *Builder, optimize: std.builtin.OptimizeMode) Examples {
         var ret: Examples = undefined;
