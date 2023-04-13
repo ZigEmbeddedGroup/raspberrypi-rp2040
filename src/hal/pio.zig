@@ -292,13 +292,13 @@ pub const Pio = enum(u1) {
         });
     }
 
-    pub inline fn is_tx_fifo_full(self: Pio, sm: StateMachine) bool {
+    pub inline fn sm_is_tx_fifo_full(self: Pio, sm: StateMachine) bool {
         const regs = self.get_regs();
         const txfull = regs.FSTAT.read().TXFULL;
         return (txfull & (@as(u4, 1) << @enumToInt(sm))) != 0;
     }
 
-    pub fn get_tx_fifo(self: Pio, sm: StateMachine) *volatile u32 {
+    pub inline fn sm_get_tx_fifo(self: Pio, sm: StateMachine) *volatile u32 {
         const regs = self.get_regs();
         return switch (sm) {
             .sm0 => &regs.TXF0,
@@ -308,14 +308,14 @@ pub const Pio = enum(u1) {
         };
     }
 
-    pub inline fn blocking_write(self: Pio, sm: StateMachine, value: u32) void {
-        while (self.is_tx_fifo_full(sm)) {}
+    pub inline fn sm_blocking_write(self: Pio, sm: StateMachine, value: u32) void {
+        while (self.sm_is_tx_fifo_full(sm)) {}
 
-        const fifo_ptr = self.get_tx_fifo(sm);
+        const fifo_ptr = self.sm_get_tx_fifo(sm);
         fifo_ptr.* = value;
     }
 
-    pub fn set_enabled(self: Pio, sm: StateMachine, enabled: bool) void {
+    pub inline fn sm_set_enabled(self: Pio, sm: StateMachine, enabled: bool) void {
         const regs = self.get_regs();
 
         var value = regs.CTRL.read();
@@ -327,7 +327,7 @@ pub const Pio = enum(u1) {
         regs.CTRL.write(value);
     }
 
-    fn sm_clear_debug(self: Pio, sm: StateMachine) void {
+    inline fn sm_clear_debug(self: Pio, sm: StateMachine) void {
         const regs = self.get_regs();
         const mask: u4 = (@as(u4, 1) << @enumToInt(sm));
 
@@ -415,7 +415,7 @@ pub const Pio = enum(u1) {
         options: StateMachineInitOptions,
     ) void {
         // Halt the machine, set some sensible defaults
-        self.set_enabled(sm, false);
+        self.sm_set_enabled(sm, false);
         self.sm_set_pin_mappings(sm, options.pin_mappings);
         self.sm_set_clkdiv(sm, options.clkdiv);
         self.sm_set_exec_options(sm, options.exec);

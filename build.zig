@@ -39,8 +39,8 @@ pub fn addPiPicoExecutable(
 // project requires multiple HALs, it accepts microzig as a param
 pub fn build(b: *Builder) !void {
     const optimize = b.standardOptimizeOption(.{});
-    //var examples = Examples.init(b, optimize);
-    //examples.install();
+    var examples = Examples.init(b, optimize);
+    examples.install();
 
     const pio_tests = b.addTest(.{
         .root_source_file = .{
