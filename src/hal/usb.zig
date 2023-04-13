@@ -476,7 +476,12 @@ pub fn usb_task() void {
                     },
                     .Report => {
                         std.log.info("        Report", .{});
-                        // TODO: return report descriptor if HID
+
+                        usb_start_tx(
+                            &buffers.B,
+                            device_config.endpoints[EP0_IN_IDX],
+                            hid.ReportDescriptorFidoU2f[0..],
+                        );
                     },
                     .Physical => {
                         std.log.info("        Physical", .{});
@@ -1133,4 +1138,8 @@ pub fn modify_endpoint_control(
         6 => peripherals.USBCTRL_DPRAM.EP3_OUT_CONTROL.modify(fields),
         else => unreachable, // TODO: actually reachable but we don't care for now
     }
+}
+
+test "usb tests" {
+    _ = hid;
 }

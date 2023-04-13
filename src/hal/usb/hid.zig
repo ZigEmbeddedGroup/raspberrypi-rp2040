@@ -16,6 +16,8 @@
 //! * `interface_subclass` - 1 if boot interface, 0 else (most of the time)
 //! * `interface_protocol` - 0 if no boot interface, 1 if keyboard boot interface, 2 if mouse bi
 
+const std = @import("std");
+
 const usb = @import("../usb.zig");
 
 // +++++++++++++++++++++++++++++++++++++++++++++++++
@@ -146,7 +148,7 @@ pub const ReportItemMainGroup = enum(u4) {
     CollectionEnd = 12,
 };
 
-pub const CollectionItem = enum(u4) {
+pub const CollectionItem = enum(u8) {
     Physical = 0,
     Application,
     Logical,
@@ -169,6 +171,29 @@ pub const GlobalItem = enum(u4) {
     ReportCount = 9,
     Push = 10,
     Pop = 11,
+};
+
+pub const LocalItem = enum(u4) {
+    Usage = 0,
+    UsageMin = 1,
+    UsageMax = 2,
+    DesignatorIndex = 3,
+    DesignatorMin = 4,
+    DesignatorMax = 5,
+    StringIndex = 7,
+    StringMin = 8,
+    StringMax = 9,
+    Delimiter = 10,
+};
+
+pub const UsageTable = struct {
+    const fido: [2]u8 = "\xD0\xF1".*;
+};
+
+pub const FidoAllianceUsage = struct {
+    const u2fhid: [1]u8 = "\x01".*;
+    const data_in: [1]u8 = "\x20".*;
+    const data_out: [1]u8 = "\x21".*;
 };
 
 const HID_DATA: u8 = 0 << 0;
@@ -198,37 +223,174 @@ const HID_VOLATILE = 1 << 7;
 const HID_BITFIELD = 0 << 8;
 const HID_BUFFERED_BYTES = 1 << 8;
 
-pub fn hid_report_item_1(
-    out: []u8,
-    size: u2,
-    @"type": u2,
+// +++++++++++++++++++++++++++++++++++++++++++++++++
+// Report Descriptor Functions
+// +++++++++++++++++++++++++++++++++++++++++++++++++
+
+pub fn hid_report_item(
+    comptime n: u2,
+    typ: u2,
     tag: u4,
-    data: u8,
-) void {
-    out[0] = (@intCast(u8, tag) << 4) | (@intCast(u8, @"type") << 4) | size;
-    out[1] = data;
+    data: [n]u8,
+) [n + 1]u8 {
+    var out: [n + 1]u8 = undefined;
+
+    out[0] = (@intCast(u8, tag) << 4) | (@intCast(u8, typ) << 2) | n;
+
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        out[i + 1] = data[i];
+    }
+
+    return out;
 }
 
-pub fn hid_report_item_2(
-    out: []u8,
-    size: u2,
-    @"type": u2,
-    tag: u4,
-    data: u16,
-) void {
-    out[0] = (@intCast(u8, tag) << 4) | (@intCast(u8, @"type") << 4) | size;
-    out[1] = @intCast(u8, data & 0xff);
-    out[2] = @intCast(u8, (data >> 8) & 0xff);
+// Main Items
+// -------------------------------------------------
+
+pub fn hid_collection(data: CollectionItem) [2]u8 {
+    return hid_report_item(
+        1,
+        @enumToInt(ReportItemTypes.Main),
+        @enumToInt(ReportItemMainGroup.Collection),
+        std.mem.toBytes(@enumToInt(data)),
+    );
 }
 
-pub fn hid_input(out: []u8, data: u8) void {
-    hid_report_item_1(
-        out,
+pub fn hid_input(data: u8) [2]u8 {
+    return hid_report_item(
         1,
         @enumToInt(ReportItemTypes.Main),
         @enumToInt(ReportItemMainGroup.Input),
+        std.mem.toBytes(data),
+    );
+}
+
+pub fn hid_output(data: u8) [2]u8 {
+    return hid_report_item(
+        1,
+        @enumToInt(ReportItemTypes.Main),
+        @enumToInt(ReportItemMainGroup.Output),
+        std.mem.toBytes(data),
+    );
+}
+
+pub fn hid_collection_end() [1]u8 {
+    return hid_report_item(
+        0,
+        @enumToInt(ReportItemTypes.Main),
+        @enumToInt(ReportItemMainGroup.CollectionEnd),
+        .{},
+    );
+}
+
+// Global Items
+// -------------------------------------------------
+
+pub fn hid_usage_page(comptime n: u2, usage: [n]u8) [n + 1]u8 {
+    return hid_report_item(
+        n,
+        @enumToInt(ReportItemTypes.Global),
+        @enumToInt(GlobalItem.UsagePage),
+        usage,
+    );
+}
+
+pub fn hid_logical_min(comptime n: u2, data: [n]u8) [n + 1]u8 {
+    return hid_report_item(
+        n,
+        @enumToInt(ReportItemTypes.Global),
+        @enumToInt(GlobalItem.LogicalMin),
         data,
     );
 }
 
-test "create hid report item" {}
+pub fn hid_logical_max(comptime n: u2, data: [n]u8) [n + 1]u8 {
+    return hid_report_item(
+        n,
+        @enumToInt(ReportItemTypes.Global),
+        @enumToInt(GlobalItem.LogicalMax),
+        data,
+    );
+}
+
+pub fn hid_report_size(comptime n: u2, data: [n]u8) [n + 1]u8 {
+    return hid_report_item(
+        n,
+        @enumToInt(ReportItemTypes.Global),
+        @enumToInt(GlobalItem.ReportSize),
+        data,
+    );
+}
+
+pub fn hid_report_count(comptime n: u2, data: [n]u8) [n + 1]u8 {
+    return hid_report_item(
+        n,
+        @enumToInt(ReportItemTypes.Global),
+        @enumToInt(GlobalItem.ReportCount),
+        data,
+    );
+}
+
+// Local Items
+// -------------------------------------------------
+
+pub fn hid_usage(comptime n: u2, data: [n]u8) [n + 1]u8 {
+    return hid_report_item(
+        n,
+        @enumToInt(ReportItemTypes.Local),
+        @enumToInt(LocalItem.Usage),
+        data,
+    );
+}
+
+// +++++++++++++++++++++++++++++++++++++++++++++++++
+// Report Descriptors
+// +++++++++++++++++++++++++++++++++++++++++++++++++
+
+pub const ReportDescriptorFidoU2f = hid_usage_page(2, UsageTable.fido) //
+++ hid_usage(1, FidoAllianceUsage.u2fhid) //
+++ hid_collection(CollectionItem.Application) //
+// Usage Data In
+++ hid_usage(1, FidoAllianceUsage.data_in) //
+++ hid_logical_min(1, "\x00".*) //
+++ hid_logical_max(2, "\xff\x00".*) //
+++ hid_report_size(1, "\x08".*) //
+++ hid_report_count(1, "\x40".*) //
+++ hid_input(HID_DATA | HID_VARIABLE | HID_ABSOLUTE) //
+// Usage Data Out
+++ hid_usage(1, FidoAllianceUsage.data_out) //
+++ hid_logical_min(1, "\x00".*) //
+++ hid_logical_max(2, "\xff\x00".*) //
+++ hid_report_size(1, "\x08".*) //
+++ hid_report_count(1, "\x40".*) //
+++ hid_output(HID_DATA | HID_VARIABLE | HID_ABSOLUTE) //
+// End
+++ hid_collection_end();
+
+test "create hid report item" {
+    const r = hid_report_item(
+        2,
+        0,
+        3,
+        "\x22\x11".*,
+    );
+
+    try std.testing.expectEqual(@intCast(usize, 3), r.len);
+    try std.testing.expectEqual(@intCast(u8, 50), r[0]);
+    try std.testing.expectEqual(@intCast(u8, 0x22), r[1]);
+    try std.testing.expectEqual(@intCast(u8, 0x11), r[2]);
+}
+
+test "create hid fido usage page" {
+    const f = hid_usage_page(2, UsageTable.fido);
+
+    try std.testing.expectEqual(@intCast(usize, 3), f.len);
+    try std.testing.expectEqual(@intCast(u8, 6), f[0]);
+    try std.testing.expectEqual(@intCast(u8, 0xd0), f[1]);
+    try std.testing.expectEqual(@intCast(u8, 0xf1), f[2]);
+}
+
+test "report descriptor fido" {
+    _ = ReportDescriptorFidoU2f;
+}
