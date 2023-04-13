@@ -404,6 +404,9 @@ pub fn usb_task() void {
                             _ = rom.memcpy(S.tmp[used .. used + id.len], &id);
                             used += id.len;
 
+                            // Seems like the host does not bother asking for the
+                            // hid descriptor so we'll just send it with the
+                            // other descriptors.
                             if (device_config.hid_descriptor) |hid_desc| {
                                 const hd = hid_desc.serialize();
                                 _ = rom.memcpy(S.tmp[used .. used + hd.len], &hd);
@@ -477,11 +480,13 @@ pub fn usb_task() void {
                     .Report => {
                         std.log.info("        Report", .{});
 
-                        usb_start_tx(
-                            &buffers.B,
-                            device_config.endpoints[EP0_IN_IDX],
-                            hid.ReportDescriptorFidoU2f[0..],
-                        );
+                        if (device_config.report_descriptor) |report| {
+                            usb_start_tx(
+                                &buffers.B,
+                                device_config.endpoints[EP0_IN_IDX],
+                                report,
+                            );
+                        }
                     },
                     .Physical => {
                         std.log.info("        Physical", .{});
@@ -970,7 +975,9 @@ pub const UsbDeviceConfiguration = struct {
     config_descriptor: *const UsbConfigurationDescriptor,
     lang_descriptor: []const u8,
     descriptor_strings: []const []const u8,
+    // TODO: group hid and report descriptors together...
     hid_descriptor: ?*const hid.HidDescriptor = null,
+    report_descriptor: ?[]const u8 = null,
 
     endpoints: [4]*UsbEndpointConfiguration,
 };
