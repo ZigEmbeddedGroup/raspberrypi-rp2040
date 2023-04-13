@@ -37,3 +37,8 @@ pub fn init() void {
 pub fn get_cpu_id() u32 {
     return SIO.CPUID.*;
 }
+
+test "hal tests" {
+    _ = pio;
+    _ = usb;
+}
