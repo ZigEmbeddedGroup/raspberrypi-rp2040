@@ -473,6 +473,28 @@ pub fn usb_task() void {
                         std.log.info("        Endpoint", .{});
                         // Same deal as interface descriptors above.
                     },
+                    .DeviceQualifier => {
+                        std.log.info("        DeviceQualifier", .{});
+                        // We will just copy parts of the DeviceDescriptor because
+                        // the DeviceQualifierDescriptor can be seen as a subset.
+                        const dqd = DeviceQualifierDescriptor{
+                            .bcd_usb = device_config.device_descriptor.bcd_usb,
+                            .device_class = device_config.device_descriptor.device_class,
+                            .device_subclass = device_config.device_descriptor.device_subclass,
+                            .device_protocol = device_config.device_descriptor.device_protocol,
+                            .max_packet_size0 = device_config.device_descriptor.max_packet_size0,
+                            .num_configurations = device_config.device_descriptor.num_configurations,
+                        };
+
+                        const data = dqd.serialize();
+                        _ = rom.memcpy(S.tmp[0..data.len], &data);
+
+                        usb_start_tx(
+                            &buffers.B,
+                            device_config.endpoints[EP0_IN_IDX],
+                            S.tmp[0..data.len],
+                        );
+                    },
                     .Hid => {
                         std.log.info("        HID", .{});
                         // TODO: return HID descriptor
@@ -494,6 +516,7 @@ pub fn usb_task() void {
                     },
                 }
             } else {
+                std.log.info("        ELSE", .{});
                 // Unrecognized descriptor type. We should probably
                 // indicate an error. Instead we'll just ignore it,
                 // because this doesn't happen in practice.
@@ -680,6 +703,9 @@ pub const UsbDescType = enum(u8) {
     String = 0x03,
     Interface = 0x04,
     Endpoint = 0x05,
+    DeviceQualifier = 0x06,
+    //-------- Class Specific Descriptors ----------
+    //TODO: split this up?
     /// HID descriptor
     Hid = 0x21,
     /// Report descriptor
@@ -694,6 +720,7 @@ pub const UsbDescType = enum(u8) {
             3 => @This().String,
             4 => @This().Interface,
             5 => @This().Endpoint,
+            6 => @This().DeviceQualifier,
             0x21 => @This().Hid,
             0x22 => @This().Report,
             0x23 => @This().Physical,
@@ -915,6 +942,45 @@ pub const UsbDeviceDescriptor = packed struct {
         out[15] = self.product_s;
         out[16] = self.serial_s;
         out[17] = self.num_configurations;
+        return out;
+    }
+};
+
+/// USB Device Qualifier Descriptor
+/// This descriptor is mostly the same as the DeviceDescriptor
+pub const DeviceQualifierDescriptor = packed struct {
+    /// Length of this structure, must be 18.
+    length: u8 = 10,
+    /// Type of this descriptor, must be `Device`.
+    descriptor_type: UsbDescType = UsbDescType.DeviceQualifier,
+    /// Version of the device descriptor / USB protocol, in binary-coded
+    /// decimal. This is typically `0x01_10` for USB 1.1.
+    bcd_usb: u16,
+    /// Class of device, giving a broad functional area.
+    device_class: u8,
+    /// Subclass of device, refining the class.
+    device_subclass: u8,
+    /// Protocol within the subclass.
+    device_protocol: u8,
+    /// Maximum unit of data this device can move.
+    max_packet_size0: u8,
+    /// Number of configurations supported by this device.
+    num_configurations: u8,
+    /// Reserved for future use; must be 0
+    reserved: u8 = 0,
+
+    pub fn serialize(self: *const @This()) [10]u8 {
+        var out: [10]u8 = undefined;
+        out[0] = 10; // length
+        out[1] = @enumToInt(self.descriptor_type);
+        out[2] = @intCast(u8, self.bcd_usb & 0xff);
+        out[3] = @intCast(u8, (self.bcd_usb >> 8) & 0xff);
+        out[4] = self.device_class;
+        out[5] = self.device_subclass;
+        out[6] = self.device_protocol;
+        out[7] = self.max_packet_size0;
+        out[8] = self.num_configurations;
+        out[9] = self.reserved;
         return out;
     }
 };
