@@ -16,5 +16,14 @@ for vid in  USB_VID:
             while True:
                 inp = input("Send text to HID Device : ").encode('utf-8')
                 dev.write(inp)
-                str_in = dev.read(128)
-                print("Received from HID Device:", str_in.hex(), '\n')
+
+                x = 0
+                l = len(inp)
+                r = b""
+                while (x < l):
+                    str_in = dev.read(64)
+                    r += str_in
+                    x += 64
+
+                print("Received from HID Device:\n", r)
+                print("hex:\n", r.hex())

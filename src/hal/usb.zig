@@ -1118,6 +1118,15 @@ pub var EP0_IN_CFG: UsbEndpointConfiguration = .{
 // Utility functions
 // +++++++++++++++++++++++++++++++++++++++++++++++++
 
+/// Check if the corresponding buffer is available
+pub fn buffer_available(
+    ep: *UsbEndpointConfiguration,
+) bool {
+    const rbc = read_raw_buffer_control(ep.buffer_control_index);
+    // Bit 11 of the EPn_X_BUFFER_CONTROL register represents the AVAILABLE_0 flag
+    return ((rbc & 0x400) == 0);
+}
+
 /// Configures a given endpoint to send data (device-to-host, IN) when the host
 /// next asks for it.
 ///
@@ -1141,11 +1150,30 @@ pub fn usb_start_tx(
 
     // Configure the IN:
     const np: u1 = if (ep.next_pid_1) 1 else 0;
+
+    // The AVAILABLE bit in the buffer control register should be set
+    // separately to the rest of the data in the buffer control register,
+    // so that the rest of the data in the buffer control register is
+    // accurate when the AVAILABLE bit is set.
+
+    // Write the buffer information to the buffer control register
     modify_buffer_control(ep.buffer_control_index, .{
         .PID_0 = np, // DATA0/1, depending
         .FULL_0 = 1, // We have put data in
-        .AVAILABLE_0 = 1, // The data is for the computer to use now
         .LENGTH_0 = @intCast(u10, buffer.len), // There are this many bytes
+    });
+
+    // Nop for some clock cycles
+    // use volatile so the compiler doesn't optimize the nops away
+    asm volatile (
+        \\ nop
+        \\ nop
+        \\ nop
+    );
+
+    // Set available bit
+    modify_buffer_control(ep.buffer_control_index, .{
+        .AVAILABLE_0 = 1, // The data is for the computer to use now
     });
 
     ep.next_pid_1 = !ep.next_pid_1;
