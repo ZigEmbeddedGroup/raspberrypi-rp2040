@@ -120,13 +120,15 @@ pub var DEVICE_CONFIGURATION: usb.UsbDeviceConfiguration = .{
         "P\x00i\x00c\x00o\x00 \x00T\x00e\x00s\x00t\x00 \x00D\x00e\x00v\x00i\x00c\x00e\x00",
         "c\x00a\x00f\x00e\x00b\x00a\x00b\x00e\x00",
     },
-    .hid_descriptor = &.{
-        .bcd_hid = 0x0111,
-        .country_code = 0,
-        .num_descriptors = 1,
-        .report_length = 34,
+    .hid = .{
+        .hid_descriptor = &.{
+            .bcd_hid = 0x0111,
+            .country_code = 0,
+            .num_descriptors = 1,
+            .report_length = 34,
+        },
+        .report_descriptor = &usb.hid.ReportDescriptorFidoU2f,
     },
-    .report_descriptor = &usb.hid.ReportDescriptorFidoU2f,
     // Here we pass all endpoints to the config
     // Dont forget to pass EP0_[IN|OUT] in the order seen below!
     .endpoints = .{

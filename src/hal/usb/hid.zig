@@ -18,16 +18,32 @@
 
 const std = @import("std");
 
-const usb = @import("../usb.zig");
-
 // +++++++++++++++++++++++++++++++++++++++++++++++++
 // Common Data Types
 // +++++++++++++++++++++++++++++++++++++++++++++++++
 
+pub const HidDescType = enum(u8) {
+    /// HID descriptor
+    Hid = 0x21,
+    /// Report descriptor
+    Report = 0x22,
+    /// Physical descriptor
+    Physical = 0x23,
+
+    pub fn from_u16(v: u16) ?@This() {
+        return switch (v) {
+            0x21 => @This().Hid,
+            0x22 => @This().Report,
+            0x23 => @This().Physical,
+            else => null,
+        };
+    }
+};
+
 /// USB HID descriptor
 pub const HidDescriptor = packed struct {
     length: u8 = 9,
-    descriptor_type: usb.UsbDescType = usb.UsbDescType.Hid,
+    descriptor_type: HidDescType = HidDescType.Hid,
     /// Numeric expression identifying the HID Class Specification release
     bcd_hid: u16,
     /// Numeric expression identifying country code of the localized hardware
@@ -35,7 +51,7 @@ pub const HidDescriptor = packed struct {
     /// Numeric expression specifying the number of class descriptors
     num_descriptors: u8,
     /// Type of HID class report
-    report_type: usb.UsbDescType = usb.UsbDescType.Report,
+    report_type: HidDescType = HidDescType.Report,
     /// The total size of the Report descriptor
     report_length: u16,
 

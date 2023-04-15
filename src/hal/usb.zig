@@ -407,8 +407,8 @@ pub fn usb_task() void {
                             // Seems like the host does not bother asking for the
                             // hid descriptor so we'll just send it with the
                             // other descriptors.
-                            if (device_config.hid_descriptor) |hid_desc| {
-                                const hd = hid_desc.serialize();
+                            if (device_config.hid) |hid_conf| {
+                                const hd = hid_conf.hid_descriptor.serialize();
                                 _ = rom.memcpy(S.tmp[used .. used + hd.len], &hd);
                                 used += hd.len;
                             }
@@ -495,31 +495,48 @@ pub fn usb_task() void {
                             S.tmp[0..data.len],
                         );
                     },
-                    .Hid => {
-                        std.log.info("        HID", .{});
-                        // TODO: return HID descriptor
-                    },
-                    .Report => {
-                        std.log.info("        Report", .{});
-
-                        if (device_config.report_descriptor) |report| {
-                            usb_start_tx(
-                                &buffers.B,
-                                device_config.endpoints[EP0_IN_IDX],
-                                report,
-                            );
-                        }
-                    },
-                    .Physical => {
-                        std.log.info("        Physical", .{});
-                        // Ignore for now
-                    },
                 }
             } else {
-                std.log.info("        ELSE", .{});
-                // Unrecognized descriptor type. We should probably
-                // indicate an error. Instead we'll just ignore it,
-                // because this doesn't happen in practice.
+                // Maybe the unknown request type is a hid request
+
+                if (device_config.hid) |hid_conf| {
+                    const _hid_desc_type = hid.HidDescType.from_u16(setup.value >> 8);
+
+                    if (_hid_desc_type) |hid_desc_type| {
+                        switch (hid_desc_type) {
+                            .Hid => {
+                                std.log.info("        HID", .{});
+
+                                const hd = hid_conf.hid_descriptor.serialize();
+                                _ = rom.memcpy(S.tmp[0..hd.len], &hd);
+
+                                usb_start_tx(
+                                    &buffers.B,
+                                    device_config.endpoints[EP0_IN_IDX],
+                                    S.tmp[0..hd.len],
+                                );
+                            },
+                            .Report => {
+                                std.log.info("        Report", .{});
+
+                                // The report descriptor is already a (static)
+                                // u8 array, i.e., we can pass it directly
+                                usb_start_tx(
+                                    &buffers.B,
+                                    device_config.endpoints[EP0_IN_IDX],
+                                    hid_conf.report_descriptor,
+                                );
+                            },
+                            .Physical => {
+                                std.log.info("        Physical", .{});
+                                // Ignore for now
+                            },
+                        }
+                    } else {
+                        // It's not a valid HID request. This can totally happen
+                        // we'll just ignore it for now...
+                    }
+                }
             }
         } else if (reqty == UsbDir.In) {
             std.log.info("    Just IN", .{});
@@ -705,13 +722,7 @@ pub const UsbDescType = enum(u8) {
     Endpoint = 0x05,
     DeviceQualifier = 0x06,
     //-------- Class Specific Descriptors ----------
-    //TODO: split this up?
-    /// HID descriptor
-    Hid = 0x21,
-    /// Report descriptor
-    Report = 0x22,
-    /// Physical descriptor
-    Physical = 0x23,
+    // 0x21 ...
 
     pub fn from_u16(v: u16) ?@This() {
         return switch (v) {
@@ -721,9 +732,6 @@ pub const UsbDescType = enum(u8) {
             4 => @This().Interface,
             5 => @This().Endpoint,
             6 => @This().DeviceQualifier,
-            0x21 => @This().Hid,
-            0x22 => @This().Report,
-            0x23 => @This().Physical,
             else => null,
         };
     }
@@ -1042,9 +1050,10 @@ pub const UsbDeviceConfiguration = struct {
     lang_descriptor: []const u8,
     descriptor_strings: []const []const u8,
     // TODO: group hid and report descriptors together...
-    hid_descriptor: ?*const hid.HidDescriptor = null,
-    report_descriptor: ?[]const u8 = null,
-
+    hid: ?struct {
+        hid_descriptor: *const hid.HidDescriptor,
+        report_descriptor: []const u8,
+    } = null,
     endpoints: [4]*UsbEndpointConfiguration,
 };
 
