@@ -173,7 +173,9 @@ pub fn main() !void {
     var new: u64 = 0;
     while (true) {
         // You can now poll for USB events
-        rp2040.usb.usb_task();
+        rp2040.usb.usb_task(
+            false, // debug output over UART [Y/n]
+        );
 
         new = time.get_time_since_boot().us_since_boot;
         if (new - old > 500000) {

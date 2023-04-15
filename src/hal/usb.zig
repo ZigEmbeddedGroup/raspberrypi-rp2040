@@ -256,7 +256,9 @@ pub fn usb_init_device(device_config: *UsbDeviceConfiguration) void {
     usb_config = device_config;
 }
 
-pub fn usb_task() void {
+/// Usb task function meant to be executed in regular intervals after
+/// initializing the device.
+pub fn usb_task(debug: bool) void {
     // We'll keep some state in Plain Old Static Local Variables:
     const S = struct {
         // When the host gives us a new address, we can't just slap it into
@@ -281,7 +283,7 @@ pub fn usb_task() void {
 
     // Setup request received?
     if (ints.SETUP_REQ == 1) {
-        std.log.info("setup req", .{});
+        if (debug) std.log.info("setup req", .{});
         // Clear the status flag (write-one-to-clear)
         peripherals.USBCTRL_REGS.SIE_STATUS.modify(.{ .SETUP_REC = 1 });
 
@@ -324,7 +326,7 @@ pub fn usb_task() void {
                 device_config.endpoints[EP0_IN_IDX], //EP0_IN_CFG,
                 &.{}, // <- see, empty buffer
             );
-            std.log.info("    SetAddress: {}", .{S.new_address.?});
+            if (debug) std.log.info("    SetAddress: {}", .{S.new_address.?});
         } else if (reqty == UsbDir.Out and req != null and req.? == UsbSetupRequest.SetConfiguration) {
             // We only have one configuration, and it doesn't really
             // mean anything to us -- more of a formality. All we do in
@@ -335,7 +337,7 @@ pub fn usb_task() void {
                 device_config.endpoints[EP0_IN_IDX], //EP0_IN_CFG,
                 &.{}, // <- see, empty buffer
             );
-            std.log.info("    SetConfiguration", .{});
+            if (debug) std.log.info("    SetConfiguration", .{});
         } else if (reqty == UsbDir.Out) {
             // This is sort of a hack, but: if we get any other kind of
             // OUT, just acknowledge it with the same zero-length status
@@ -349,16 +351,16 @@ pub fn usb_task() void {
                 device_config.endpoints[EP0_IN_IDX], // EP0_IN_CFG,
                 &.{}, // <- see, empty buffer
             );
-            std.log.info("    Just OUT", .{});
+            if (debug) std.log.info("    Just OUT", .{});
         } else if (reqty == UsbDir.In and req != null and req.? == UsbSetupRequest.GetDescriptor) {
             // Identify the requested descriptor type, which is in the
             // _top_ 8 bits of value.
             const descriptor_type = UsbDescType.from_u16(setup.value >> 8);
-            std.log.info("    GetDescriptor: {}", .{setup.value >> 8});
+            if (debug) std.log.info("    GetDescriptor: {}", .{setup.value >> 8});
             if (descriptor_type) |dt| {
                 switch (dt) {
                     .Device => {
-                        std.log.info("        Device", .{});
+                        if (debug) std.log.info("        Device", .{});
                         // TODO: this sure looks like a duplicate, but it's
                         // a duplicate that was present in the C
                         // implementation.
@@ -376,7 +378,7 @@ pub fn usb_task() void {
                         );
                     },
                     .Config => {
-                        std.log.info("        Config", .{});
+                        if (debug) std.log.info("        Config", .{});
                         // Config descriptor requests are slightly unusual.
                         // We can respond with just our config descriptor,
                         // but we can _also_ append our interface and
@@ -428,7 +430,7 @@ pub fn usb_task() void {
                         );
                     },
                     .String => {
-                        std.log.info("        String", .{});
+                        if (debug) std.log.info("        String", .{});
                         // String descriptor index is in bottom 8 bits of
                         // `value`.
                         const i = @intCast(usize, setup.value & 0xff);
@@ -458,7 +460,7 @@ pub fn usb_task() void {
                         );
                     },
                     .Interface => {
-                        std.log.info("        Interface", .{});
+                        if (debug) std.log.info("        Interface", .{});
                         // We don't expect the host to send this because we
                         // delivered our interface descriptor with the
                         // config descriptor.
@@ -470,11 +472,11 @@ pub fn usb_task() void {
                         // this.
                     },
                     .Endpoint => {
-                        std.log.info("        Endpoint", .{});
+                        if (debug) std.log.info("        Endpoint", .{});
                         // Same deal as interface descriptors above.
                     },
                     .DeviceQualifier => {
-                        std.log.info("        DeviceQualifier", .{});
+                        if (debug) std.log.info("        DeviceQualifier", .{});
                         // We will just copy parts of the DeviceDescriptor because
                         // the DeviceQualifierDescriptor can be seen as a subset.
                         const dqd = DeviceQualifierDescriptor{
@@ -505,7 +507,7 @@ pub fn usb_task() void {
                     if (_hid_desc_type) |hid_desc_type| {
                         switch (hid_desc_type) {
                             .Hid => {
-                                std.log.info("        HID", .{});
+                                if (debug) std.log.info("        HID", .{});
 
                                 const hd = hid_conf.hid_descriptor.serialize();
                                 _ = rom.memcpy(S.tmp[0..hd.len], &hd);
@@ -517,7 +519,7 @@ pub fn usb_task() void {
                                 );
                             },
                             .Report => {
-                                std.log.info("        Report", .{});
+                                if (debug) std.log.info("        Report", .{});
 
                                 // The report descriptor is already a (static)
                                 // u8 array, i.e., we can pass it directly
@@ -528,7 +530,7 @@ pub fn usb_task() void {
                                 );
                             },
                             .Physical => {
-                                std.log.info("        Physical", .{});
+                                if (debug) std.log.info("        Physical", .{});
                                 // Ignore for now
                             },
                         }
@@ -539,10 +541,10 @@ pub fn usb_task() void {
                 }
             }
         } else if (reqty == UsbDir.In) {
-            std.log.info("    Just IN", .{});
+            if (debug) std.log.info("    Just IN", .{});
             // Other IN request. Ignore.
         } else {
-            std.log.info("    This is unexpected", .{});
+            if (debug) std.log.info("    This is unexpected", .{});
             // Unexpected request type or request bits. This can totally
             // happen (yay, hardware!) but is rare in practice. Ignore
             // it.
@@ -551,7 +553,7 @@ pub fn usb_task() void {
 
     // Events on one or more buffers? (In practice, always one.)
     if (ints.BUFF_STATUS == 1) {
-        std.log.info("buff status", .{});
+        if (debug) std.log.info("buff status", .{});
         const orig_bufbits = peripherals.USBCTRL_REGS.BUFF_STATUS.raw;
 
         // Let's try being super tricky and iterating through set bits with
@@ -564,7 +566,7 @@ pub fn usb_task() void {
             // Who's still outstanding? Find their bit index by counting how
             // many LSBs are zero.
             const lowbit_index = rom.ctz32(bufbits);
-            std.log.info("    idx: {}", .{lowbit_index});
+            if (debug) std.log.info("    idx: {}", .{lowbit_index});
             // Remove their bit from our set.
             const lowbit = @intCast(u32, 1) << @intCast(u5, lowbit_index);
             bufbits ^= lowbit;
@@ -629,14 +631,14 @@ pub fn usb_task() void {
                 // perfectly legal.
                 break :DataBrk epbuffer[0..len];
             };
-            std.log.info("    data: {any}", .{data});
+            if (debug) std.log.info("    data: {any}", .{data});
 
             // Perform any required action on the data. For OUT, the `data`
             // will be whatever was sent by the host. For IN, it's a copy of
             // whatever we sent.
             switch (ep_addr) {
                 EP0_IN_ADDR => {
-                    std.log.info("    EP0_IN_ADDR", .{});
+                    if (debug) std.log.info("    EP0_IN_ADDR", .{});
                     // We use this opportunity to finish the delayed
                     // SetAddress request, if there is one:
                     if (S.new_address) |addr| {
@@ -655,7 +657,7 @@ pub fn usb_task() void {
                     }
                 },
                 else => {
-                    std.log.info("    ELSE, ep_addr: {}", .{ep_addr & 0x7f});
+                    if (debug) std.log.info("    ELSE, ep_addr: {}", .{ep_addr & 0x7f});
                     // Handle user provided endpoints.
 
                     // Find the corresponding endpoint. In practice this
@@ -681,7 +683,7 @@ pub fn usb_task() void {
 
     // Has the host signaled a bus reset?
     if (ints.BUS_RESET == 1) {
-        std.log.info("bus reset", .{});
+        if (debug) std.log.info("bus reset", .{});
         // Acknowledge by writing the write-one-to-clear status bit.
         peripherals.USBCTRL_REGS.SIE_STATUS.modify(.{ .BUS_RESET = 1 });
 
