@@ -439,7 +439,7 @@ pub const Tokenizer = struct {
                 .side_set = .{
                     .count = count,
                     .opt = opt,
-                    .pindirs = pindirs,
+                    .pindir = pindirs,
                 },
             },
         };
@@ -1129,7 +1129,7 @@ pub const Token = struct {
     pub const SideSet = struct {
         count: Value,
         opt: bool = false,
-        pindirs: bool = false,
+        pindir: bool = false,
     };
 
     pub const LangOpt = struct {

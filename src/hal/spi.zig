@@ -14,10 +14,10 @@ const SpiRegs = microzig.chip.types.peripherals.SPI0;
 
 pub const Config = struct {
     clock_config: clocks.GlobalConfiguration,
-    tx_pin: ?u32 = 19,
-    rx_pin: ?u32 = 16,
-    sck_pin: ?u32 = 18,
-    csn_pin: ?u32 = 17,
+    tx_pin: ?gpio.Gpio = gpio.num(19),
+    rx_pin: ?gpio.Gpio = gpio.num(16),
+    sck_pin: ?gpio.Gpio = gpio.num(18),
+    csn_pin: ?gpio.Gpio = gpio.num(17),
     baud_rate: u32 = 1000 * 1000,
 };
 
@@ -32,21 +32,12 @@ pub const SPI = enum {
         };
     }
 
-    pub fn reset(spi: SPI) void {
-        switch (spi) {
-            .spi0 => resets.reset(&.{.spi0}),
-            .spi1 => resets.reset(&.{.spi1}),
-        }
-    }
-
     pub fn init(comptime id: u32, comptime config: Config) SPI {
         const spi: SPI = switch (id) {
             0 => .spi0,
             1 => .spi1,
             else => @compileError("there is only spi0 and spi1"),
         };
-
-        spi.reset();
 
         const peri_freq = config.clock_config.peri.?.output_freq;
         _ = spi.set_baudrate(config.baud_rate, peri_freq);
@@ -71,10 +62,10 @@ pub const SPI = enum {
             .SSE = 1,
         });
 
-        if (config.tx_pin) |pin| gpio.set_function(pin, .spi);
-        if (config.rx_pin) |pin| gpio.set_function(pin, .spi);
-        if (config.sck_pin) |pin| gpio.set_function(pin, .spi);
-        if (config.csn_pin) |pin| gpio.set_function(pin, .spi);
+        if (config.tx_pin) |pin| pin.set_function(.spi);
+        if (config.rx_pin) |pin| pin.set_function(.spi);
+        if (config.sck_pin) |pin| pin.set_function(.spi);
+        if (config.csn_pin) |pin| pin.set_function(.spi);
 
         return spi;
     }

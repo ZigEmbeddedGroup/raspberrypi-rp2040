@@ -33,8 +33,8 @@ pub const Parity = enum {
 
 pub const Config = struct {
     clock_config: clocks.GlobalConfiguration,
-    tx_pin: ?u32 = null,
-    rx_pin: ?u32 = null,
+    tx_pin: ?gpio.Gpio = null,
+    rx_pin: ?gpio.Gpio = null,
     baud_rate: u32,
     word_bits: WordBits = .eight,
     stop_bits: StopBits = .one,
@@ -74,8 +74,6 @@ pub const UART = enum {
 
         assert(config.baud_rate > 0);
 
-        uart.reset();
-
         const uart_regs = uart.get_regs();
         const peri_freq = config.clock_config.peri.?.output_freq;
         uart.set_baudrate(config.baud_rate, peri_freq);
@@ -96,8 +94,8 @@ pub const UART = enum {
         });
 
         // TODO comptime assertions
-        if (config.tx_pin) |tx_pin| gpio.set_function(tx_pin, .uart);
-        if (config.rx_pin) |rx_pin| gpio.set_function(rx_pin, .uart);
+        if (config.tx_pin) |tx_pin| tx_pin.set_function(.uart);
+        if (config.rx_pin) |rx_pin| rx_pin.set_function(.uart);
 
         return uart;
     }
@@ -139,13 +137,6 @@ pub const UART = enum {
 
         // TODO: error checking
         return uart_regs.UARTDR.read().DATA;
-    }
-
-    pub fn reset(uart: UART) void {
-        switch (uart) {
-            .uart0 => resets.reset(&.{.uart0}),
-            .uart1 => resets.reset(&.{.uart1}),
-        }
     }
 
     pub fn set_format(

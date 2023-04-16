@@ -32,7 +32,22 @@ pub const clock_config = clocks.GlobalConfiguration.init(.{
 });
 
 pub fn init() void {
+    // Reset all peripherals to put system into a known state, - except
+    // for QSPI pads and the XIP IO bank, as this is fatal if running from
+    // flash - and the PLLs, as this is fatal if clock muxing has not been
+    // reset on this boot - and USB, syscfg, as this disturbs USB-to-SWD
+    // on core 1
+    resets.reset_block(resets.masks.init);
+
+    // Remove reset from peripherals which are clocked only by clk_sys and
+    // clk_ref. Other peripherals stay in reset until we've configured
+    // clocks.
+    resets.unreset_block_wait(resets.masks.clocked_by_sys_and_ref);
+
     clock_config.apply();
+
+    // Peripheral clocks should now all be running
+    resets.unreset_block_wait(resets.masks.all);
 }
 
 pub fn get_cpu_id() u32 {
