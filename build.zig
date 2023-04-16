@@ -40,18 +40,18 @@ pub fn addPiPicoExecutable(
 pub fn build(b: *Builder) !void {
     const optimize = b.standardOptimizeOption(.{});
     var examples = Examples.init(b, optimize);
-    examples.install();
+    examples.install(b);
 
-    const tests = b.addTest(.{
+    const pio_tests = b.addTest(.{
         .root_source_file = .{
             .path = "src/hal.zig",
         },
         .optimize = optimize,
     });
-    tests.addIncludePath("src/hal/pio/assembler");
+    pio_tests.addIncludePath("src/hal/pio/assembler");
 
     const test_step = b.step("test", "run unit tests");
-    test_step.dependOn(&tests.run().step);
+    test_step.dependOn(&b.addRunArtifact(pio_tests).step);
 }
 
 fn root() []const u8 {
@@ -66,7 +66,7 @@ pub const Examples = struct {
     pwm: *microzig.EmbeddedExecutable,
     spi_master: *microzig.EmbeddedExecutable,
     uart: *microzig.EmbeddedExecutable,
-    //squarewave: *microzig.EmbeddedExecutable, <-- compiler error
+    squarewave: *microzig.EmbeddedExecutable,
     //uart_pins: microzig.EmbeddedExecutable,
     flash_program: *microzig.EmbeddedExecutable,
     usb_device: *microzig.EmbeddedExecutable,
@@ -87,8 +87,9 @@ pub const Examples = struct {
         return ret;
     }
 
-    pub fn install(examples: *Examples) void {
-        inline for (@typeInfo(Examples).Struct.fields) |field|
-            @field(examples, field.name).install();
+    pub fn install(examples: *Examples, b: *Builder) void {
+        inline for (@typeInfo(Examples).Struct.fields) |field| {
+            b.installArtifact(@field(examples, field.name).inner);
+        }
     }
 };
