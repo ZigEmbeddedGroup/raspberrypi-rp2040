@@ -13,11 +13,12 @@ pub const BLOCK_SIZE = 65536;
 pub const XIP_BASE = 0x10000000;
 
 pub const boot2 = struct {
-    /// Size of the second stage bootloader in bytes
-    const BOOT2_SIZE_BYTES = 64;
+    /// Size of the second stage bootloader in words
+    const BOOT2_SIZE_WORDS = 64;
 
     /// Buffer for the second stage bootloader
-    var copyout: [BOOT2_SIZE_BYTES]u32 = undefined;
+    var copyout: [BOOT2_SIZE_WORDS]u32 = undefined;
+    const stage2_boot = @ptrCast(*fn () void, &copyout[0]);
     var copyout_valid: bool = false;
 
     /// Copy the 2nd stage bootloader into memory
@@ -25,20 +26,15 @@ pub const boot2 = struct {
         if (copyout_valid) return;
         const bootloader = @intToPtr([*]u32, XIP_BASE);
         var i: usize = 0;
-        while (i < BOOT2_SIZE_BYTES) : (i += 1) {
+        while (i < BOOT2_SIZE_WORDS) : (i += 1) {
             copyout[i] = bootloader[i];
         }
         copyout_valid = true;
     }
 
     pub fn flash_enable_xip() linksection(".time_critical") void {
-        // TODO: use the second stage bootloader instead of cmd_xip
-        //const bootloader: []u32 = copyout[1..];
-
-        //const f = @ptrCast(*fn () void, bootloader.ptr);
-        //f();
-
-        rom.flash_enter_cmd_xip()();
+        stage2_boot();
+        //rom.flash_enter_cmd_xip()();
     }
 };
 
