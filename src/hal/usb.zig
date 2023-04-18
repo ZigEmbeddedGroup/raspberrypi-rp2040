@@ -2,25 +2,64 @@
 //!
 //! Inspired by cbiffle's Rust [implementation](https://github.com/cbiffle/rp2040-usb-device-in-one-file/blob/main/src/main.rs)
 
-/// Human Interface Device (HID)
-pub const hid = @import("usb/hid.zig");
-
 const std = @import("std");
 
 const microzig = @import("microzig");
 const peripherals = microzig.chip.peripherals;
 
+/// Human Interface Device (HID)
+pub const usb = microzig.core.usb;
+pub const hid = usb.hid;
+
 const rom = @import("rom.zig");
 const resets = @import("resets.zig");
 
-pub const LED_PIN: u8 = 25;
-pub const SETUP_PIN: u8 = 0;
-pub const BUFF_PIN: u8 = 1;
-pub const RESET_PIN: u8 = 2;
-pub const EP_PIN: [3]u8 = .{ 3, 4, 5 };
-
 pub const EP0_OUT_IDX = 0;
 pub const EP0_IN_IDX = 1;
+
+// +++++++++++++++++++++++++++++++++++++++++++++++++
+// User Interface
+// +++++++++++++++++++++++++++++++++++++++++++++++++
+
+pub const UsbDeviceConfiguration = usb.UsbDeviceConfiguration;
+pub const UsbDeviceDescriptor = usb.UsbDeviceDescriptor;
+pub const UsbDescType = usb.UsbDescType;
+pub const UsbInterfaceDescriptor = usb.UsbInterfaceDescriptor;
+pub const UsbConfigurationDescriptor = usb.UsbConfigurationDescriptor;
+pub const UsbEndpointDescriptor = usb.UsbEndpointDescriptor;
+pub const UsbEndpointConfiguration = usb.UsbEndpointConfiguration;
+pub const UsbDir = usb.UsbDir;
+pub const UsbTransferType = usb.UsbTransferType;
+
+pub var EP0_OUT_CFG: usb.UsbEndpointConfiguration = .{
+    .descriptor = &usb.UsbEndpointDescriptor{
+        .length = @intCast(u8, @sizeOf(usb.UsbEndpointDescriptor)),
+        .descriptor_type = usb.UsbDescType.Endpoint,
+        .endpoint_address = usb.EP0_OUT_ADDR,
+        .attributes = @enumToInt(usb.UsbTransferType.Control),
+        .max_packet_size = 64,
+        .interval = 0,
+    },
+    .endpoint_control_index = null,
+    .buffer_control_index = 1,
+    .data_buffer_index = 0,
+    .next_pid_1 = false,
+};
+
+pub var EP0_IN_CFG: usb.UsbEndpointConfiguration = .{
+    .descriptor = &usb.UsbEndpointDescriptor{
+        .length = @intCast(u8, @sizeOf(usb.UsbEndpointDescriptor)),
+        .descriptor_type = usb.UsbDescType.Endpoint,
+        .endpoint_address = usb.EP0_IN_ADDR,
+        .attributes = @enumToInt(usb.UsbTransferType.Control),
+        .max_packet_size = 64,
+        .interval = 0,
+    },
+    .endpoint_control_index = null,
+    .buffer_control_index = 0,
+    .data_buffer_index = 0,
+    .next_pid_1 = false,
+};
 
 // +++++++++++++++++++++++++++++++++++++++++++++++++
 // Reference to endpoint buffers
@@ -40,7 +79,7 @@ pub const buffers = struct {
     const USB_BUFFERS = USBDPRAM_BASE + (2 * BUFFER_SIZE);
 
     /// Mapping to the different data buffers in DPSRAM
-    pub var B: Buffers = .{
+    pub var B: usb.Buffers = .{
         .ep0_buffer0 = @intToPtr([*]u8, USB_EP0_BUFFER0),
         .ep0_buffer1 = @intToPtr([*]u8, USB_EP0_BUFFER1),
         // We will initialize this comptime in a loop
@@ -65,7 +104,7 @@ pub const buffers = struct {
     };
 };
 
-var usb_config: ?*UsbDeviceConfiguration = null;
+var usb_config: ?*usb.UsbDeviceConfiguration = null;
 
 // +++++++++++++++++++++++++++++++++++++++++++++++++
 // Code
@@ -103,7 +142,7 @@ pub fn usb_clk_init() void {
     // We now have the stable 48MHz reference clock required for USB:
 }
 
-pub fn usb_init_device(device_config: *UsbDeviceConfiguration) void {
+pub fn usb_init_device(device_config: *usb.UsbDeviceConfiguration) void {
     // Bring USB out of reset
     resets.reset(&.{.usbctrl});
 
@@ -276,13 +315,13 @@ pub fn usb_task(debug: bool) void {
         var tmp: [64]u8 = .{0} ** 64;
     };
 
-    var device_config: *UsbDeviceConfiguration = if (usb_config) |cfg| cfg else return;
+    var device_config: *usb.UsbDeviceConfiguration = if (usb_config) |cfg| cfg else return;
 
     // Check which interrupt flags are set.
-    const ints = peripherals.USBCTRL_REGS.INTS.read();
+    const ints = get_interrupts();
 
     // Setup request received?
-    if (ints.SETUP_REQ == 1) {
+    if (ints.SetupReq) {
         if (debug) std.log.info("setup req", .{});
         // Clear the status flag (write-one-to-clear)
         peripherals.USBCTRL_REGS.SIE_STATUS.modify(.{ .SETUP_REC = 1 });
@@ -302,7 +341,7 @@ pub fn usb_task(debug: bool) void {
         _ = rom.memcpy(setup_packet[0..4], std.mem.asBytes(&spl));
         _ = rom.memcpy(setup_packet[4..8], std.mem.asBytes(&sph));
         // Reinterpret as setup packet
-        const setup = std.mem.bytesToValue(UsbSetupPacket, &setup_packet);
+        const setup = std.mem.bytesToValue(usb.UsbSetupPacket, &setup_packet);
 
         // Reset PID to 1 for EP0 IN. Every DATA packet we send in response
         // to an IN on EP0 needs to use PID DATA1, and this line will ensure
@@ -312,10 +351,10 @@ pub fn usb_task(debug: bool) void {
         // Attempt to parse the request type and request into one of our
         // known enum values, and then inspect them. (These will return None
         // if we get an unexpected numeric value.)
-        const reqty = UsbDir.of_endpoint_addr(setup.request_type);
-        const req = UsbSetupRequest.from_u8(setup.request);
+        const reqty = usb.UsbDir.of_endpoint_addr(setup.request_type);
+        const req = usb.UsbSetupRequest.from_u8(setup.request);
 
-        if (reqty == UsbDir.Out and req != null and req.? == UsbSetupRequest.SetAddress) {
+        if (reqty == usb.UsbDir.Out and req != null and req.? == usb.UsbSetupRequest.SetAddress) {
             // The new address is in the bottom 8 bits of the setup
             // packet value field. Store it for use later.
             S.new_address = @intCast(u8, setup.value & 0xff);
@@ -327,7 +366,7 @@ pub fn usb_task(debug: bool) void {
                 &.{}, // <- see, empty buffer
             );
             if (debug) std.log.info("    SetAddress: {}", .{S.new_address.?});
-        } else if (reqty == UsbDir.Out and req != null and req.? == UsbSetupRequest.SetConfiguration) {
+        } else if (reqty == usb.UsbDir.Out and req != null and req.? == usb.UsbSetupRequest.SetConfiguration) {
             // We only have one configuration, and it doesn't really
             // mean anything to us -- more of a formality. All we do in
             // response to this is:
@@ -338,7 +377,7 @@ pub fn usb_task(debug: bool) void {
                 &.{}, // <- see, empty buffer
             );
             if (debug) std.log.info("    SetConfiguration", .{});
-        } else if (reqty == UsbDir.Out) {
+        } else if (reqty == usb.UsbDir.Out) {
             // This is sort of a hack, but: if we get any other kind of
             // OUT, just acknowledge it with the same zero-length status
             // phase that we use for control transfers that we _do_
@@ -352,10 +391,10 @@ pub fn usb_task(debug: bool) void {
                 &.{}, // <- see, empty buffer
             );
             if (debug) std.log.info("    Just OUT", .{});
-        } else if (reqty == UsbDir.In and req != null and req.? == UsbSetupRequest.GetDescriptor) {
+        } else if (reqty == usb.UsbDir.In and req != null and req.? == usb.UsbSetupRequest.GetDescriptor) {
             // Identify the requested descriptor type, which is in the
             // _top_ 8 bits of value.
-            const descriptor_type = UsbDescType.from_u16(setup.value >> 8);
+            const descriptor_type = usb.UsbDescType.from_u16(setup.value >> 8);
             if (debug) std.log.info("    GetDescriptor: {}", .{setup.value >> 8});
             if (descriptor_type) |dt| {
                 switch (dt) {
@@ -479,7 +518,7 @@ pub fn usb_task(debug: bool) void {
                         if (debug) std.log.info("        DeviceQualifier", .{});
                         // We will just copy parts of the DeviceDescriptor because
                         // the DeviceQualifierDescriptor can be seen as a subset.
-                        const dqd = DeviceQualifierDescriptor{
+                        const dqd = usb.DeviceQualifierDescriptor{
                             .bcd_usb = device_config.device_descriptor.bcd_usb,
                             .device_class = device_config.device_descriptor.device_class,
                             .device_subclass = device_config.device_descriptor.device_subclass,
@@ -540,7 +579,7 @@ pub fn usb_task(debug: bool) void {
                     }
                 }
             }
-        } else if (reqty == UsbDir.In) {
+        } else if (reqty == usb.UsbDir.In) {
             if (debug) std.log.info("    Just IN", .{});
             // Other IN request. Ignore.
         } else {
@@ -552,7 +591,7 @@ pub fn usb_task(debug: bool) void {
     } // <-- END of setup request handling
 
     // Events on one or more buffers? (In practice, always one.)
-    if (ints.BUFF_STATUS == 1) {
+    if (ints.BuffStatus) {
         if (debug) std.log.info("buff status", .{});
         const orig_bufbits = peripherals.USBCTRL_REGS.BUFF_STATUS.raw;
 
@@ -577,7 +616,7 @@ pub fn usb_task(debug: bool) void {
             const epnum = @intCast(u8, lowbit_index >> 1);
             // Of the pair, the IN endpoint comes first, followed by OUT, so
             // we can get the direction by:
-            const dir = if (lowbit_index & 1 == 0) UsbDir.In else UsbDir.Out;
+            const dir = if (lowbit_index & 1 == 0) usb.UsbDir.In else usb.UsbDir.Out;
 
             const ep_addr = dir.endpoint(epnum);
             // Process the buffer-done event.
@@ -586,7 +625,7 @@ pub fn usb_task(debug: bool) void {
                 // corresponds to this address. We could use a smarter
                 // method here, but in practice, the number of endpoints is
                 // small so a linear scan doesn't kill us.
-                var endpoint: ?*UsbEndpointConfiguration = null;
+                var endpoint: ?*usb.UsbEndpointConfiguration = null;
                 for (device_config.endpoints) |ep| {
                     if (ep.descriptor.endpoint_address == ep_addr) {
                         endpoint = ep;
@@ -637,7 +676,7 @@ pub fn usb_task(debug: bool) void {
             // will be whatever was sent by the host. For IN, it's a copy of
             // whatever we sent.
             switch (ep_addr) {
-                EP0_IN_ADDR => {
+                usb.EP0_IN_ADDR => {
                     if (debug) std.log.info("    EP0_IN_ADDR", .{});
                     // We use this opportunity to finish the delayed
                     // SetAddress request, if there is one:
@@ -662,7 +701,7 @@ pub fn usb_task(debug: bool) void {
 
                     // Find the corresponding endpoint. In practice this
                     // list shouldnt be very long so a linear search should be ok
-                    var endpoint: ?*UsbEndpointConfiguration = null;
+                    var endpoint: ?*usb.UsbEndpointConfiguration = null;
                     for (device_config.endpoints[2..]) |ep| {
                         if (ep.descriptor.endpoint_address == ep_addr) {
                             endpoint = ep;
@@ -682,7 +721,7 @@ pub fn usb_task(debug: bool) void {
     } // <-- END of buf status handling
 
     // Has the host signaled a bus reset?
-    if (ints.BUS_RESET == 1) {
+    if (ints.BusReset) {
         if (debug) std.log.info("bus reset", .{});
         // Acknowledge by writing the write-one-to-clear status bit.
         peripherals.USBCTRL_REGS.SIE_STATUS.modify(.{ .BUS_RESET = 1 });
@@ -699,7 +738,7 @@ pub fn usb_task(debug: bool) void {
     if (S.configured and !S.started) {
         // We can skip the first two endpoints because those are EP0_OUT and EP0_IN
         for (device_config.endpoints[2..]) |ep| {
-            if (UsbDir.of_endpoint_addr(ep.descriptor.endpoint_address) == .Out) {
+            if (usb.UsbDir.of_endpoint_addr(ep.descriptor.endpoint_address) == .Out) {
                 // Hey host! we expect data!
                 usb_start_rx(
                     ep,
@@ -712,417 +751,12 @@ pub fn usb_task(debug: bool) void {
 }
 
 // +++++++++++++++++++++++++++++++++++++++++++++++++
-// Data Types
-// +++++++++++++++++++++++++++++++++++++++++++++++++
-
-/// Types of USB descriptor
-pub const UsbDescType = enum(u8) {
-    Device = 0x01,
-    Config = 0x02,
-    String = 0x03,
-    Interface = 0x04,
-    Endpoint = 0x05,
-    DeviceQualifier = 0x06,
-    //-------- Class Specific Descriptors ----------
-    // 0x21 ...
-
-    pub fn from_u16(v: u16) ?@This() {
-        return switch (v) {
-            1 => @This().Device,
-            2 => @This().Config,
-            3 => @This().String,
-            4 => @This().Interface,
-            5 => @This().Endpoint,
-            6 => @This().DeviceQualifier,
-            else => null,
-        };
-    }
-};
-
-/// Types of transfer that can be indicated by the `attributes` field on
-/// `UsbEndpointDescriptor`.
-pub const UsbTransferType = enum(u2) {
-    Control = 0,
-    Isochronous = 1,
-    Bulk = 2,
-    Interrupt = 3,
-};
-
-/// The types of USB SETUP requests that we understand.
-pub const UsbSetupRequest = enum(u8) {
-    /// Asks the device to send a certain descriptor back to the host. Always
-    /// used on an IN request.
-    GetDescriptor = 0x06,
-    /// Notifies the device that it's being moved to a different address on the
-    /// bus. Always an OUT.
-    SetAddress = 0x05,
-    /// Configures a device by choosing one of the options listed in its
-    /// descriptors. Always an OUT.
-    SetConfiguration = 0x09,
-
-    pub fn from_u8(request: u8) ?@This() {
-        return switch (request) {
-            0x06 => UsbSetupRequest.GetDescriptor,
-            0x05 => UsbSetupRequest.SetAddress,
-            0x09 => UsbSetupRequest.SetConfiguration,
-            else => null,
-        };
-    }
-};
-
-/// USB deals in two different transfer directions, called OUT (host-to-device)
-/// and IN (device-to-host). In the vast majority of cases, OUT is represented
-/// by a 0 byte, and IN by an `0x80` byte.
-pub const UsbDir = enum(u8) {
-    Out = 0,
-    In = 0x80,
-
-    pub inline fn endpoint(self: @This(), num: u8) u8 {
-        return num | @enumToInt(self);
-    }
-
-    pub inline fn of_endpoint_addr(addr: u8) @This() {
-        return if (addr & @enumToInt(@This().In) != 0) @This().In else @This().Out;
-    }
-};
-
-/// Describes an endpoint within an interface
-pub const UsbEndpointDescriptor = packed struct {
-    /// Length of this struct, must be 7.
-    length: u8,
-    /// Type of this descriptor, must be `Endpoint`.
-    descriptor_type: UsbDescType,
-    /// Address of this endpoint, where the bottom 4 bits give the endpoint
-    /// number (0..15) and the top bit distinguishes IN (1) from OUT (0).
-    endpoint_address: u8,
-    /// Endpoint attributes; the most relevant part is the bottom 2 bits, which
-    /// control the transfer type using the values from `UsbTransferType`.
-    attributes: u8,
-    /// Maximum packet size this endpoint can accept/produce.
-    max_packet_size: u16,
-    /// Interval for polling interrupt/isochronous endpoints (which we don't
-    /// currently support) in milliseconds.
-    interval: u8,
-
-    pub fn serialize(self: *const @This()) [7]u8 {
-        var out: [7]u8 = undefined;
-        out[0] = 7; // length
-        out[1] = @enumToInt(self.descriptor_type);
-        out[2] = self.endpoint_address;
-        out[3] = self.attributes;
-        out[4] = @intCast(u8, self.max_packet_size & 0xff);
-        out[5] = @intCast(u8, (self.max_packet_size >> 8) & 0xff);
-        out[6] = self.interval;
-        return out;
-    }
-};
-
-/// Description of an interface within a configuration.
-pub const UsbInterfaceDescriptor = packed struct {
-    /// Length of this structure, must be 9.
-    length: u8,
-    /// Type of this descriptor, must be `Interface`.
-    descriptor_type: UsbDescType,
-    /// ID of this interface.
-    interface_number: u8,
-    /// Allows a single `interface_number` to have several alternate interface
-    /// settings, where each alternate increments this field. Normally there's
-    /// only one, and `alternate_setting` is zero.
-    alternate_setting: u8,
-    /// Number of endpoint descriptors in this interface.
-    num_endpoints: u8,
-    /// Interface class code, distinguishing the type of interface.
-    interface_class: u8,
-    /// Interface subclass code, refining the class of interface.
-    interface_subclass: u8,
-    /// Protocol within the interface class/subclass.
-    interface_protocol: u8,
-    /// Index of interface name within string descriptor table.
-    interface_s: u8,
-
-    pub fn serialize(self: *const @This()) [9]u8 {
-        var out: [9]u8 = undefined;
-        out[0] = 9; // length
-        out[1] = @enumToInt(self.descriptor_type);
-        out[2] = self.interface_number;
-        out[3] = self.alternate_setting;
-        out[4] = self.num_endpoints;
-        out[5] = self.interface_class;
-        out[6] = self.interface_subclass;
-        out[7] = self.interface_protocol;
-        out[8] = self.interface_s;
-        return out;
-    }
-};
-
-/// Description of a single available device configuration.
-pub const UsbConfigurationDescriptor = packed struct {
-    /// Length of this structure, must be 9.
-    length: u8,
-    /// Type of this descriptor, must be `Config`.
-    descriptor_type: UsbDescType,
-    /// Total length of all descriptors in this configuration, concatenated.
-    /// This will include this descriptor, plus at least one interface
-    /// descriptor, plus each interface descriptor's endpoint descriptors.
-    total_length: u16,
-    /// Number of interface descriptors in this configuration.
-    num_interfaces: u8,
-    /// Number to use when requesting this configuration via a
-    /// `SetConfiguration` request.
-    configuration_value: u8,
-    /// Index of this configuration's name in the string descriptor table.
-    configuration_s: u8,
-    /// Bit set of device attributes:
-    ///
-    /// - Bit 7 should be set (indicates that device can be bus powered in USB
-    /// 1.0).
-    /// - Bit 6 indicates that the device can be self-powered.
-    /// - Bit 5 indicates that the device can signal remote wakeup of the host
-    /// (like a keyboard).
-    /// - The rest are reserved and should be zero.
-    attributes: u8,
-    /// Maximum device power consumption in units of 2mA.
-    max_power: u8,
-
-    pub fn serialize(self: *const @This()) [9]u8 {
-        var out: [9]u8 = undefined;
-        out[0] = 9; // length
-        out[1] = @enumToInt(self.descriptor_type);
-        out[2] = @intCast(u8, self.total_length & 0xff);
-        out[3] = @intCast(u8, (self.total_length >> 8) & 0xff);
-        out[4] = self.num_interfaces;
-        out[5] = self.configuration_value;
-        out[6] = self.configuration_s;
-        out[7] = self.attributes;
-        out[8] = self.max_power;
-        return out;
-    }
-};
-
-/// Describes a device. This is the most broad description in USB and is
-/// typically the first thing the host asks for.
-pub const UsbDeviceDescriptor = packed struct {
-    /// Length of this structure, must be 18.
-    length: u8,
-    /// Type of this descriptor, must be `Device`.
-    descriptor_type: UsbDescType,
-    /// Version of the device descriptor / USB protocol, in binary-coded
-    /// decimal. This is typically `0x01_10` for USB 1.1.
-    bcd_usb: u16,
-    /// Class of device, giving a broad functional area.
-    device_class: u8,
-    /// Subclass of device, refining the class.
-    device_subclass: u8,
-    /// Protocol within the subclass.
-    device_protocol: u8,
-    /// Maximum unit of data this device can move.
-    max_packet_size0: u8,
-    /// ID of product vendor.
-    vendor: u16,
-    /// ID of product.
-    product: u16,
-    /// Device version number, as BCD again.
-    bcd_device: u16,
-    /// Index of manufacturer name in string descriptor table.
-    manufacturer_s: u8,
-    /// Index of product name in string descriptor table.
-    product_s: u8,
-    /// Index of serial number in string descriptor table.
-    serial_s: u8,
-    /// Number of configurations supported by this device.
-    num_configurations: u8,
-
-    pub fn serialize(self: *const @This()) [18]u8 {
-        var out: [18]u8 = undefined;
-        out[0] = 18; // length
-        out[1] = @enumToInt(self.descriptor_type);
-        out[2] = @intCast(u8, self.bcd_usb & 0xff);
-        out[3] = @intCast(u8, (self.bcd_usb >> 8) & 0xff);
-        out[4] = self.device_class;
-        out[5] = self.device_subclass;
-        out[6] = self.device_protocol;
-        out[7] = self.max_packet_size0;
-        out[8] = @intCast(u8, self.vendor & 0xff);
-        out[9] = @intCast(u8, (self.vendor >> 8) & 0xff);
-        out[10] = @intCast(u8, self.product & 0xff);
-        out[11] = @intCast(u8, (self.product >> 8) & 0xff);
-        out[12] = @intCast(u8, self.bcd_device & 0xff);
-        out[13] = @intCast(u8, (self.bcd_device >> 8) & 0xff);
-        out[14] = self.manufacturer_s;
-        out[15] = self.product_s;
-        out[16] = self.serial_s;
-        out[17] = self.num_configurations;
-        return out;
-    }
-};
-
-/// USB Device Qualifier Descriptor
-/// This descriptor is mostly the same as the DeviceDescriptor
-pub const DeviceQualifierDescriptor = packed struct {
-    /// Length of this structure, must be 18.
-    length: u8 = 10,
-    /// Type of this descriptor, must be `Device`.
-    descriptor_type: UsbDescType = UsbDescType.DeviceQualifier,
-    /// Version of the device descriptor / USB protocol, in binary-coded
-    /// decimal. This is typically `0x01_10` for USB 1.1.
-    bcd_usb: u16,
-    /// Class of device, giving a broad functional area.
-    device_class: u8,
-    /// Subclass of device, refining the class.
-    device_subclass: u8,
-    /// Protocol within the subclass.
-    device_protocol: u8,
-    /// Maximum unit of data this device can move.
-    max_packet_size0: u8,
-    /// Number of configurations supported by this device.
-    num_configurations: u8,
-    /// Reserved for future use; must be 0
-    reserved: u8 = 0,
-
-    pub fn serialize(self: *const @This()) [10]u8 {
-        var out: [10]u8 = undefined;
-        out[0] = 10; // length
-        out[1] = @enumToInt(self.descriptor_type);
-        out[2] = @intCast(u8, self.bcd_usb & 0xff);
-        out[3] = @intCast(u8, (self.bcd_usb >> 8) & 0xff);
-        out[4] = self.device_class;
-        out[5] = self.device_subclass;
-        out[6] = self.device_protocol;
-        out[7] = self.max_packet_size0;
-        out[8] = self.num_configurations;
-        out[9] = self.reserved;
-        return out;
-    }
-};
-
-/// Layout of an 8-byte USB SETUP packet.
-pub const UsbSetupPacket = packed struct {
-    /// Request type; in practice, this is always either OUT (host-to-device) or
-    /// IN (device-to-host), whose values are given in the `UsbDir` enum.
-    request_type: u8,
-    /// Request. Standard setup requests are in the `UsbSetupRequest` enum.
-    /// Devices can extend this with additional types as long as they don't
-    /// conflict.
-    request: u8,
-    /// A simple argument of up to 16 bits, specific to the request.
-    value: u16,
-    /// Not used in the requests we support.
-    index: u16,
-    /// If data will be transferred after this request (in the direction given
-    /// by `request_type`), this gives the number of bytes (OUT) or maximum
-    /// number of bytes (IN).
-    length: u16,
-};
-
-// +++++++++++++++++++++++++++++++++++++++++++++++++
-// Driver support stuctures
-// +++++++++++++++++++++++++++++++++++++++++++++++++
-
-pub const UsbEndpointConfiguration = struct {
-    descriptor: *const UsbEndpointDescriptor,
-    /// Index of this endpoint's control register in the `ep_control` array.
-    ///
-    /// TODO: this can be derived from the endpoint address, perhaps it should
-    /// be.
-    endpoint_control_index: ?usize,
-    /// Index of this endpoint's buffer control register in the
-    /// `ep_buffer_control` array.
-    ///
-    /// TODO this, too, can be derived.
-    buffer_control_index: usize,
-
-    /// Index of this endpoint's data buffer in the array of data buffers
-    /// allocated from DPRAM. This can be arbitrary, and endpoints can even
-    /// share buffers if you're careful.
-    data_buffer_index: usize,
-
-    /// Keeps track of which DATA PID (DATA0/DATA1) is expected on this endpoint
-    /// next. If `true`, we're expecting `DATA1`, otherwise `DATA0`.
-    next_pid_1: bool,
-
-    /// Optional callback for custom OUT endpoints. This function will be called
-    /// if the device receives data on the corresponding endpoint.
-    callback: ?*const fn (dc: *UsbDeviceConfiguration, data: []const u8) void = null,
-};
-
-pub const UsbDeviceConfiguration = struct {
-    device_descriptor: *const UsbDeviceDescriptor,
-    interface_descriptor: *const UsbInterfaceDescriptor,
-    config_descriptor: *const UsbConfigurationDescriptor,
-    lang_descriptor: []const u8,
-    descriptor_strings: []const []const u8,
-    // TODO: group hid and report descriptors together...
-    hid: ?struct {
-        hid_descriptor: *const hid.HidDescriptor,
-        report_descriptor: []const u8,
-    } = null,
-    endpoints: [4]*UsbEndpointConfiguration,
-};
-
-/// Buffer pointers, once they're prepared and initialized.
-pub const Buffers = struct {
-    /// Fixed EP0 Buffer0, defined by the hardware
-    ep0_buffer0: [*]u8,
-    /// Fixed EP0 Buffer1, defined by the hardware and NOT USED in this driver
-    ep0_buffer1: [*]u8,
-    /// /// Remaining buffer pool
-    rest: [16][*]u8,
-
-    /// Gets a buffer corresponding to a `data_buffer_index` in a
-    /// `UsbEndpointConfiguration`.
-    pub fn get(self: *@This(), i: usize) [*]u8 {
-        return switch (i) {
-            0 => self.ep0_buffer0,
-            1 => self.ep0_buffer1,
-            else => self.rest[i - 2],
-        };
-    }
-};
-
-// Handy constants for the endpoints we use here
-pub const EP0_IN_ADDR: u8 = UsbDir.In.endpoint(0);
-pub const EP0_OUT_ADDR: u8 = UsbDir.Out.endpoint(0);
-const EP1_OUT_ADDR: u8 = UsbDir.Out.endpoint(1);
-const EP1_IN_ADDR: u8 = UsbDir.In.endpoint(1);
-const EP2_IN_ADDR: u8 = UsbDir.In.endpoint(2);
-
-pub var EP0_OUT_CFG: UsbEndpointConfiguration = .{
-    .descriptor = &UsbEndpointDescriptor{
-        .length = @intCast(u8, @sizeOf(UsbEndpointDescriptor)),
-        .descriptor_type = UsbDescType.Endpoint,
-        .endpoint_address = EP0_OUT_ADDR,
-        .attributes = @enumToInt(UsbTransferType.Control),
-        .max_packet_size = 64,
-        .interval = 0,
-    },
-    .endpoint_control_index = null,
-    .buffer_control_index = 1,
-    .data_buffer_index = 0,
-    .next_pid_1 = false,
-};
-
-pub var EP0_IN_CFG: UsbEndpointConfiguration = .{
-    .descriptor = &UsbEndpointDescriptor{
-        .length = @intCast(u8, @sizeOf(UsbEndpointDescriptor)),
-        .descriptor_type = UsbDescType.Endpoint,
-        .endpoint_address = EP0_IN_ADDR,
-        .attributes = @enumToInt(UsbTransferType.Control),
-        .max_packet_size = 64,
-        .interval = 0,
-    },
-    .endpoint_control_index = null,
-    .buffer_control_index = 0,
-    .data_buffer_index = 0,
-    .next_pid_1 = false,
-};
-
-// +++++++++++++++++++++++++++++++++++++++++++++++++
 // Utility functions
 // +++++++++++++++++++++++++++++++++++++++++++++++++
 
 /// Check if the corresponding buffer is available
 pub fn buffer_available(
-    ep: *UsbEndpointConfiguration,
+    ep: *usb.UsbEndpointConfiguration,
 ) bool {
     const rbc = read_raw_buffer_control(ep.buffer_control_index);
     // Bit 11 of the EPn_X_BUFFER_CONTROL register represents the AVAILABLE_0 flag
@@ -1136,8 +770,8 @@ pub fn buffer_available(
 /// reuse `buffer` immediately after this returns. No need to wait for the
 /// packet to be sent.
 pub fn usb_start_tx(
-    ep_buffers: *Buffers,
-    ep: *UsbEndpointConfiguration,
+    ep_buffers: *usb.Buffers,
+    ep: *usb.UsbEndpointConfiguration,
     buffer: []const u8,
 ) void {
     // It is technically possible to support longer buffers but this demo
@@ -1182,7 +816,7 @@ pub fn usb_start_tx(
 }
 
 pub fn usb_start_rx(
-    ep: *UsbEndpointConfiguration,
+    ep: *usb.UsbEndpointConfiguration,
     len: usize,
 ) void {
     // It is technically possible to support longer buffers but this demo
@@ -1250,6 +884,20 @@ pub fn modify_endpoint_control(
         6 => peripherals.USBCTRL_DPRAM.EP3_OUT_CONTROL.modify(fields),
         else => unreachable, // TODO: actually reachable but we don't care for now
     }
+}
+
+/// Check which interrupt flags are set
+pub fn get_interrupts() usb.InterruptStatus {
+    const ints = peripherals.USBCTRL_REGS.INTS.read();
+
+    return .{
+        .BuffStatus = if (ints.BUFF_STATUS == 1) true else false,
+        .BusReset = if (ints.BUS_RESET == 1) true else false,
+        .DevConnDis = if (ints.DEV_CONN_DIS == 1) true else false,
+        .DevSuspend = if (ints.DEV_SUSPEND == 1) true else false,
+        .DevResumeFromHost = if (ints.DEV_RESUME_FROM_HOST == 1) true else false,
+        .SetupReq = if (ints.SETUP_REQ == 1) true else false,
+    };
 }
 
 test "usb tests" {
