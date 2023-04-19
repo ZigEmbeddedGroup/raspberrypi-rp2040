@@ -19,7 +19,7 @@ fn ep1_in_callback(dc: *usb.UsbDeviceConfiguration, data: []const u8) void {
     _ = data;
     // The host has collected the data we repeated onto
     // EP1! Set up to receive more data on EP1.
-    usb.usb_start_rx(
+    usb.Usb.callbacks.usb_start_rx(
         dc.endpoints[2], // EP1_OUT_CFG,
         64,
     );
@@ -28,8 +28,7 @@ fn ep1_in_callback(dc: *usb.UsbDeviceConfiguration, data: []const u8) void {
 fn ep1_out_callback(dc: *usb.UsbDeviceConfiguration, data: []const u8) void {
     // We've gotten data from the host on our custom
     // EP1! Set up EP1 to repeat it.
-    usb.usb_start_tx(
-        &usb.buffers.B,
+    usb.Usb.callbacks.usb_start_tx(
         dc.endpoints[3], // EP1_IN_CFG,
         data,
     );
@@ -154,16 +153,16 @@ pub fn main() !void {
     rp2040.uart.init_logger(uart);
 
     // First we initialize the USB clock
-    rp2040.usb.usb_clk_init();
+    rp2040.usb.Usb.init_clk();
     // Then initialize the USB device using the configuration defined above
-    rp2040.usb.usb_init_device(&DEVICE_CONFIGURATION);
+    rp2040.usb.Usb.init_device(&DEVICE_CONFIGURATION) catch unreachable;
     var old: u64 = time.get_time_since_boot().us_since_boot;
     var new: u64 = 0;
     while (true) {
         // You can now poll for USB events
-        rp2040.usb.usb_task(
+        rp2040.usb.Usb.task(
             false, // debug output over UART [Y/n]
-        );
+        ) catch unreachable;
 
         new = time.get_time_since_boot().us_since_boot;
         if (new - old > 500000) {
