@@ -256,9 +256,6 @@ pub fn usb_init_device(device_config: *usb.UsbDeviceConfiguration) void {
         .SETUP_REQ = 1,
     });
 
-    //////////////////////////////////////////////////////////////////////////
-    // Back to USB setup.
-
     // setup endpoints
     for (device_config.endpoints) |ep| {
         // EP0 doesn't have an endpoint control index; only process the other
@@ -323,25 +320,9 @@ pub fn usb_task(debug: bool) void {
     // Setup request received?
     if (ints.SetupReq) {
         if (debug) std.log.info("setup req", .{});
-        // Clear the status flag (write-one-to-clear)
-        peripherals.USBCTRL_REGS.SIE_STATUS.modify(.{ .SETUP_REC = 1 });
 
-        // This assumes that the setup packet is arriving on EP0, our
-        // control endpoint. Which it should be. We don't have any other
-        // Control endpoints.
-
-        // Copy the setup packet out of its dedicated buffer at the base of
-        // USB SRAM. The PAC models this buffer as two 32-bit registers,
-        // which is, like, not _wrong_ but slightly awkward since it means
-        // we can't just treat it as bytes. Instead, copy it out to a byte
-        // array.
-        var setup_packet: [8]u8 = .{0} ** 8;
-        const spl: u32 = peripherals.USBCTRL_DPRAM.SETUP_PACKET_LOW.raw;
-        const sph: u32 = peripherals.USBCTRL_DPRAM.SETUP_PACKET_HIGH.raw;
-        _ = rom.memcpy(setup_packet[0..4], std.mem.asBytes(&spl));
-        _ = rom.memcpy(setup_packet[4..8], std.mem.asBytes(&sph));
-        // Reinterpret as setup packet
-        const setup = std.mem.bytesToValue(usb.UsbSetupPacket, &setup_packet);
+        // Get the setup request setup packet
+        const setup = get_setup_packet();
 
         // Reset PID to 1 for EP0 IN. Every DATA packet we send in response
         // to an IN on EP0 needs to use PID DATA1, and this line will ensure
@@ -361,7 +342,6 @@ pub fn usb_task(debug: bool) void {
             // The address will actually get set later, we have
             // to use address 0 to send a status response.
             usb_start_tx(
-                &buffers.B,
                 device_config.endpoints[EP0_IN_IDX], //EP0_IN_CFG,
                 &.{}, // <- see, empty buffer
             );
@@ -372,7 +352,6 @@ pub fn usb_task(debug: bool) void {
             // response to this is:
             S.configured = true;
             usb_start_tx(
-                &buffers.B,
                 device_config.endpoints[EP0_IN_IDX], //EP0_IN_CFG,
                 &.{}, // <- see, empty buffer
             );
@@ -386,7 +365,6 @@ pub fn usb_task(debug: bool) void {
             //
             // This behavior copied shamelessly from the C example.
             usb_start_tx(
-                &buffers.B,
                 device_config.endpoints[EP0_IN_IDX], // EP0_IN_CFG,
                 &.{}, // <- see, empty buffer
             );
@@ -406,12 +384,11 @@ pub fn usb_task(debug: bool) void {
                         device_config.endpoints[EP0_IN_IDX].next_pid_1 = true;
 
                         const dc = device_config.device_descriptor.serialize();
-                        _ = rom.memcpy(S.tmp[0..dc.len], &dc);
+                        std.mem.copy(u8, S.tmp[0..dc.len], &dc);
 
                         // Configure EP0 IN to send the device descriptor
                         // when it's next asked.
                         usb_start_tx(
-                            &buffers.B,
                             device_config.endpoints[EP0_IN_IDX],
                             S.tmp[0..dc.len],
                         );
@@ -428,7 +405,7 @@ pub fn usb_task(debug: bool) void {
                         var used: usize = 0;
 
                         const cd = device_config.config_descriptor.serialize();
-                        _ = rom.memcpy(S.tmp[used .. used + cd.len], &cd);
+                        std.mem.copy(u8, S.tmp[used .. used + cd.len], &cd);
                         used += cd.len;
 
                         if (setup.length > used) {
@@ -442,7 +419,7 @@ pub fn usb_task(debug: bool) void {
                             // (1) the exact size of a config descriptor, or
                             // (2) 64 bytes, and this all fits in 64 bytes.
                             const id = device_config.interface_descriptor.serialize();
-                            _ = rom.memcpy(S.tmp[used .. used + id.len], &id);
+                            std.mem.copy(u8, S.tmp[used .. used + id.len], &id);
                             used += id.len;
 
                             // Seems like the host does not bother asking for the
@@ -450,20 +427,22 @@ pub fn usb_task(debug: bool) void {
                             // other descriptors.
                             if (device_config.hid) |hid_conf| {
                                 const hd = hid_conf.hid_descriptor.serialize();
-                                _ = rom.memcpy(S.tmp[used .. used + hd.len], &hd);
+                                std.mem.copy(u8, S.tmp[used .. used + hd.len], &hd);
                                 used += hd.len;
                             }
 
+                            // TODO: depending on the number of endpoints
+                            // this might not fit in 64 bytes -> split message
+                            // into multiple packets
                             for (device_config.endpoints[2..]) |ep| {
                                 const ed = ep.descriptor.serialize();
-                                _ = rom.memcpy(S.tmp[used .. used + ed.len], &ed);
+                                std.mem.copy(u8, S.tmp[used .. used + ed.len], &ed);
                                 used += ed.len;
                             }
                         }
 
                         // Set up EP0 IN to send the stuff we just composed.
                         usb_start_tx(
-                            &buffers.B,
                             device_config.endpoints[EP0_IN_IDX],
                             S.tmp[0..used],
                         );
@@ -485,7 +464,7 @@ pub fn usb_task(debug: bool) void {
 
                                 S.tmp[0] = @intCast(u8, len);
                                 S.tmp[1] = 0x03;
-                                _ = rom.memcpy(S.tmp[2..len], s);
+                                std.mem.copy(u8, S.tmp[2..len], s);
 
                                 break :StringBlk S.tmp[0..len];
                             }
@@ -493,7 +472,6 @@ pub fn usb_task(debug: bool) void {
                         // Set up EP0 IN to send whichever thing we just
                         // decided on.
                         usb_start_tx(
-                            &buffers.B,
                             device_config.endpoints[EP0_IN_IDX],
                             bytes,
                         );
@@ -528,10 +506,9 @@ pub fn usb_task(debug: bool) void {
                         };
 
                         const data = dqd.serialize();
-                        _ = rom.memcpy(S.tmp[0..data.len], &data);
+                        std.mem.copy(u8, S.tmp[0..data.len], &data);
 
                         usb_start_tx(
-                            &buffers.B,
                             device_config.endpoints[EP0_IN_IDX],
                             S.tmp[0..data.len],
                         );
@@ -549,10 +526,9 @@ pub fn usb_task(debug: bool) void {
                                 if (debug) std.log.info("        HID", .{});
 
                                 const hd = hid_conf.hid_descriptor.serialize();
-                                _ = rom.memcpy(S.tmp[0..hd.len], &hd);
+                                std.mem.copy(u8, S.tmp[0..hd.len], &hd);
 
                                 usb_start_tx(
-                                    &buffers.B,
                                     device_config.endpoints[EP0_IN_IDX],
                                     S.tmp[0..hd.len],
                                 );
@@ -563,7 +539,6 @@ pub fn usb_task(debug: bool) void {
                                 // The report descriptor is already a (static)
                                 // u8 array, i.e., we can pass it directly
                                 usb_start_tx(
-                                    &buffers.B,
                                     device_config.endpoints[EP0_IN_IDX],
                                     hid_conf.report_descriptor,
                                 );
@@ -593,89 +568,15 @@ pub fn usb_task(debug: bool) void {
     // Events on one or more buffers? (In practice, always one.)
     if (ints.BuffStatus) {
         if (debug) std.log.info("buff status", .{});
-        const orig_bufbits = peripherals.USBCTRL_REGS.BUFF_STATUS.raw;
+        var iter = get_EPBIter(device_config);
 
-        // Let's try being super tricky and iterating through set bits with
-        // Cleverness(tm).
-        // Become mutable so that I can clear bit as I handle 'em. Keep the
-        // original around so I can use it to clear the register in a bit.
-        var bufbits = orig_bufbits;
-
-        while (bufbits != 0) {
-            // Who's still outstanding? Find their bit index by counting how
-            // many LSBs are zero.
-            const lowbit_index = rom.ctz32(bufbits);
-            if (debug) std.log.info("    idx: {}", .{lowbit_index});
-            // Remove their bit from our set.
-            const lowbit = @intCast(u32, 1) << @intCast(u5, lowbit_index);
-            bufbits ^= lowbit;
-
-            // Here we exploit knowledge of the ordering of buffer control
-            // registers in the peripheral. Each endpoint has a pair of
-            // registers, so we can determine the endpoint number by:
-            const epnum = @intCast(u8, lowbit_index >> 1);
-            // Of the pair, the IN endpoint comes first, followed by OUT, so
-            // we can get the direction by:
-            const dir = if (lowbit_index & 1 == 0) usb.UsbDir.In else usb.UsbDir.Out;
-
-            const ep_addr = dir.endpoint(epnum);
-            // Process the buffer-done event.
-            const data = DataBrk: {
-                // Scan the device table to figure out which endpoint struct
-                // corresponds to this address. We could use a smarter
-                // method here, but in practice, the number of endpoints is
-                // small so a linear scan doesn't kill us.
-                var endpoint: ?*usb.UsbEndpointConfiguration = null;
-                for (device_config.endpoints) |ep| {
-                    if (ep.descriptor.endpoint_address == ep_addr) {
-                        endpoint = ep;
-                        break;
-                    }
-                }
-                // Buffer event for unknown EP?!
-                if (endpoint == null) continue;
-                // Read the buffer control register to check status.
-                const bc = read_raw_buffer_control(endpoint.?.buffer_control_index);
-
-                // We should only get here if we've been notified that
-                // the buffer is ours again. This is indicated by the hw
-                // _clearing_ the AVAILABLE bit.
-                //
-                // This ensures that we can return a shared reference to
-                // the databuffer contents without races.
-                //assert!(!bc.available_0().bit());
-                if ((bc & (1 << 10)) == 1) continue; // just ignore, instead of assert
-
-                // Cool. Checks out.
-
-                // Get a pointer to the buffer in USB SRAM. This is the
-                // buffer _contents_. See the safety comments below.
-                const epbuffer = buffers.B.get(endpoint.?.data_buffer_index);
-
-                // Get the actual length of the data, which may be less
-                // than the buffer size.
-                const len = @intCast(usize, bc & 0x3ff);
-
-                // Make a byte slice pointing into USB SRAM.
-                //
-                // Safety: because we always use the same data buffer
-                // with the same endpoint / buffer control register, and
-                // because we have ensured that the available bit in the
-                // buffer control register is not set, we can be
-                // confident that we're not racing the hardware.
-                //
-                // You can _definitely_ abuse this code in a way that
-                // produces multiple slices pointing to the same buffer,
-                // but since these are shared references, that's
-                // perfectly legal.
-                break :DataBrk epbuffer[0..len];
-            };
-            if (debug) std.log.info("    data: {any}", .{data});
+        while (iter.next(&iter)) |epb| {
+            if (debug) std.log.info("    data: {any}", .{epb.buffer});
 
             // Perform any required action on the data. For OUT, the `data`
             // will be whatever was sent by the host. For IN, it's a copy of
             // whatever we sent.
-            switch (ep_addr) {
+            switch (epb.endpoint.descriptor.endpoint_address) {
                 usb.EP0_IN_ADDR => {
                     if (debug) std.log.info("    EP0_IN_ADDR", .{});
                     // We use this opportunity to finish the delayed
@@ -696,41 +597,29 @@ pub fn usb_task(debug: bool) void {
                     }
                 },
                 else => {
-                    if (debug) std.log.info("    ELSE, ep_addr: {}", .{ep_addr & 0x7f});
+                    if (debug) std.log.info("    ELSE, ep_addr: {}", .{
+                        epb.endpoint.descriptor.endpoint_address & 0x7f,
+                    });
                     // Handle user provided endpoints.
 
-                    // Find the corresponding endpoint. In practice this
-                    // list shouldnt be very long so a linear search should be ok
-                    var endpoint: ?*usb.UsbEndpointConfiguration = null;
-                    for (device_config.endpoints[2..]) |ep| {
-                        if (ep.descriptor.endpoint_address == ep_addr) {
-                            endpoint = ep;
-                            break;
-                        }
-                    }
-
-                    if (endpoint) |ep| {
-                        // Invoke the callback (if the user provides one).
-                        if (ep.callback) |callback| callback(device_config, data);
-                    }
+                    // Invoke the callback (if the user provides one).
+                    if (epb.endpoint.callback) |callback| callback(device_config, epb.buffer);
                 },
             }
         }
-        // Acknowledge all buffers, since we handled them all above.
-        peripherals.USBCTRL_REGS.BUFF_STATUS.write_raw(orig_bufbits);
     } // <-- END of buf status handling
 
     // Has the host signaled a bus reset?
     if (ints.BusReset) {
         if (debug) std.log.info("bus reset", .{});
-        // Acknowledge by writing the write-one-to-clear status bit.
-        peripherals.USBCTRL_REGS.SIE_STATUS.modify(.{ .BUS_RESET = 1 });
+
+        // Reset the device
+        bus_reset();
 
         // Reset our state.
         S.new_address = null;
         S.configured = false;
         S.started = false;
-        peripherals.USBCTRL_REGS.ADDR_ENDP.modify(.{ .ADDRESS = 0 });
     }
 
     // If we have been configured but haven't reached this point yet, set up
@@ -770,7 +659,6 @@ pub fn buffer_available(
 /// reuse `buffer` immediately after this returns. No need to wait for the
 /// packet to be sent.
 pub fn usb_start_tx(
-    ep_buffers: *usb.Buffers,
     ep: *usb.UsbEndpointConfiguration,
     buffer: []const u8,
 ) void {
@@ -781,7 +669,7 @@ pub fn usb_start_tx(
     // TODO: assert!(UsbDir::of_endpoint_addr(ep.descriptor.endpoint_address) == UsbDir::In);
 
     // Copy the given data into the corresponding ep buffer
-    const epbuffer = ep_buffers.get(ep.data_buffer_index);
+    const epbuffer = buffers.B.get(ep.data_buffer_index);
     _ = rom.memcpy(epbuffer[0..buffer.len], buffer);
 
     // Configure the IN:
@@ -886,6 +774,8 @@ pub fn modify_endpoint_control(
     }
 }
 
+// -----------------------------------------------------------
+
 /// Check which interrupt flags are set
 pub fn get_interrupts() usb.InterruptStatus {
     const ints = peripherals.USBCTRL_REGS.INTS.read();
@@ -897,6 +787,142 @@ pub fn get_interrupts() usb.InterruptStatus {
         .DevSuspend = if (ints.DEV_SUSPEND == 1) true else false,
         .DevResumeFromHost = if (ints.DEV_RESUME_FROM_HOST == 1) true else false,
         .SetupReq = if (ints.SETUP_REQ == 1) true else false,
+    };
+}
+
+/// Returns a received USB setup packet
+///
+/// Side effect: The setup request status flag will be cleared
+///
+/// One can assume that this function is only called if the
+/// setup request falg is set.
+pub fn get_setup_packet() usb.UsbSetupPacket {
+    // Clear the status flag (write-one-to-clear)
+    peripherals.USBCTRL_REGS.SIE_STATUS.modify(.{ .SETUP_REC = 1 });
+
+    // This assumes that the setup packet is arriving on EP0, our
+    // control endpoint. Which it should be. We don't have any other
+    // Control endpoints.
+
+    // Copy the setup packet out of its dedicated buffer at the base of
+    // USB SRAM. The PAC models this buffer as two 32-bit registers,
+    // which is, like, not _wrong_ but slightly awkward since it means
+    // we can't just treat it as bytes. Instead, copy it out to a byte
+    // array.
+    var setup_packet: [8]u8 = .{0} ** 8;
+    const spl: u32 = peripherals.USBCTRL_DPRAM.SETUP_PACKET_LOW.raw;
+    const sph: u32 = peripherals.USBCTRL_DPRAM.SETUP_PACKET_HIGH.raw;
+    _ = rom.memcpy(setup_packet[0..4], std.mem.asBytes(&spl));
+    _ = rom.memcpy(setup_packet[4..8], std.mem.asBytes(&sph));
+    // Reinterpret as setup packet
+    return std.mem.bytesToValue(usb.UsbSetupPacket, &setup_packet);
+}
+
+/// Called on a bus reset interrupt
+pub fn bus_reset() void {
+    // Acknowledge by writing the write-one-to-clear status bit.
+    peripherals.USBCTRL_REGS.SIE_STATUS.modify(.{ .BUS_RESET = 1 });
+    peripherals.USBCTRL_REGS.ADDR_ENDP.modify(.{ .ADDRESS = 0 });
+}
+
+pub const EPBError = error{
+    /// The system has received a buffer event for an unknown endpoint (this is super unlikely)
+    UnknownEndpoint,
+    /// The buffer is not available (this is super unlikely)
+    NotAvailable,
+};
+
+pub const EPB = struct {
+    endpoint: *usb.UsbEndpointConfiguration,
+    buffer: []u8,
+};
+
+/// Iterator over all input buffers that hold data
+pub const EPBIter = struct {
+    bufbits: u32,
+    last_bit: ?u32 = null,
+    device_config: *const usb.UsbDeviceConfiguration,
+    /// Get the next available input buffer
+    next: *const fn (self: *@This()) ?EPB,
+};
+
+pub fn get_EPBIter(dc: *const usb.UsbDeviceConfiguration) EPBIter {
+    return .{
+        .bufbits = peripherals.USBCTRL_REGS.BUFF_STATUS.raw,
+        .device_config = dc,
+        .next = next,
+    };
+}
+
+pub fn next(self: *EPBIter) ?EPB {
+    if (self.last_bit) |lb| {
+        // Acknowledge the last handled buffer
+        peripherals.USBCTRL_REGS.BUFF_STATUS.write_raw(lb);
+        self.last_bit = null;
+    }
+    // All input buffers handled
+    if (self.bufbits == 0) return null;
+
+    // Who's still outstanding? Find their bit index by counting how
+    // many LSBs are zero.
+    var lowbit_index: u5 = 0;
+    while ((self.bufbits >> lowbit_index) & 0x01 == 0) : (lowbit_index += 1) {}
+    // Remove their bit from our set.
+    const lowbit = @intCast(u32, 1) << lowbit_index;
+    self.last_bit = lowbit;
+    self.bufbits ^= lowbit;
+
+    // Here we exploit knowledge of the ordering of buffer control
+    // registers in the peripheral. Each endpoint has a pair of
+    // registers, so we can determine the endpoint number by:
+    const epnum = @intCast(u8, lowbit_index >> 1);
+    // Of the pair, the IN endpoint comes first, followed by OUT, so
+    // we can get the direction by:
+    const dir = if (lowbit_index & 1 == 0) usb.UsbDir.In else usb.UsbDir.Out;
+
+    const ep_addr = dir.endpoint(epnum);
+    // Process the buffer-done event.
+
+    // Process the buffer-done event.
+    //
+    // Scan the device table to figure out which endpoint struct
+    // corresponds to this address. We could use a smarter
+    // method here, but in practice, the number of endpoints is
+    // small so a linear scan doesn't kill us.
+    var endpoint: ?*usb.UsbEndpointConfiguration = null;
+    for (self.device_config.endpoints) |ep| {
+        if (ep.descriptor.endpoint_address == ep_addr) {
+            endpoint = ep;
+            break;
+        }
+    }
+    // Buffer event for unknown EP?!
+    // TODO: if (endpoint == null) return EPBError.UnknownEndpoint;
+    // Read the buffer control register to check status.
+    const bc = read_raw_buffer_control(endpoint.?.buffer_control_index);
+
+    // We should only get here if we've been notified that
+    // the buffer is ours again. This is indicated by the hw
+    // _clearing_ the AVAILABLE bit.
+    //
+    // This ensures that we can return a shared reference to
+    // the databuffer contents without races.
+    // TODO: if ((bc & (1 << 10)) == 1) return EPBError.NotAvailable;
+
+    // Cool. Checks out.
+
+    // Get a pointer to the buffer in USB SRAM. This is the
+    // buffer _contents_. See the safety comments below.
+    const epbuffer = buffers.B.get(endpoint.?.data_buffer_index);
+
+    // Get the actual length of the data, which may be less
+    // than the buffer size.
+    const len = @intCast(usize, bc & 0x3ff);
+
+    // Copy the data from SRAM
+    return EPB{
+        .endpoint = endpoint.?,
+        .buffer = epbuffer[0..len],
     };
 }
 
