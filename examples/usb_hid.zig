@@ -115,9 +115,12 @@ pub var DEVICE_CONFIGURATION: usb.DeviceConfiguration = .{
     .lang_descriptor = "\x04\x03\x09\x04", // length || string descriptor (0x03) || Engl (0x0409)
     .descriptor_strings = &.{
         // ugly unicode :|
-        "R\x00a\x00s\x00p\x00b\x00e\x00r\x00r\x00y\x00 \x00P\x00i\x00",
-        "P\x00i\x00c\x00o\x00 \x00T\x00e\x00s\x00t\x00 \x00D\x00e\x00v\x00i\x00c\x00e\x00",
-        "c\x00a\x00f\x00e\x00b\x00a\x00b\x00e\x00",
+        //"R\x00a\x00s\x00p\x00b\x00e\x00r\x00r\x00y\x00 \x00P\x00i\x00",
+        &usb.utf8ToUtf16Le("Raspberry Pi"),
+        //"P\x00i\x00c\x00o\x00 \x00T\x00e\x00s\x00t\x00 \x00D\x00e\x00v\x00i\x00c\x00e\x00",
+        &usb.utf8ToUtf16Le("Pico Test Device"),
+        //"c\x00a\x00f\x00e\x00b\x00a\x00b\x00e\x00",
+        &usb.utf8ToUtf16Le("cafebabe"),
     },
     .hid = .{
         .hid_descriptor = &.{

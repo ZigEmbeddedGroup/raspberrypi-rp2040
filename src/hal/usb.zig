@@ -38,6 +38,8 @@ pub const EndpointConfiguration = usb.EndpointConfiguration;
 pub const Dir = usb.Dir;
 pub const TransferType = usb.TransferType;
 
+pub const utf8ToUtf16Le = usb.utf8Toutf16Le;
+
 pub var EP0_OUT_CFG: usb.EndpointConfiguration = .{
     .descriptor = &usb.EndpointDescriptor{
         .length = @intCast(u8, @sizeOf(usb.EndpointDescriptor)),
