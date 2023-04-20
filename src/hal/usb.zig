@@ -28,22 +28,22 @@ pub const EP0_IN_IDX = 1;
 /// are used by the abstract USB impl of microzig.
 pub const Usb = usb.Usb(F);
 
-pub const UsbDeviceConfiguration = usb.UsbDeviceConfiguration;
-pub const UsbDeviceDescriptor = usb.UsbDeviceDescriptor;
-pub const UsbDescType = usb.UsbDescType;
-pub const UsbInterfaceDescriptor = usb.UsbInterfaceDescriptor;
-pub const UsbConfigurationDescriptor = usb.UsbConfigurationDescriptor;
-pub const UsbEndpointDescriptor = usb.UsbEndpointDescriptor;
-pub const UsbEndpointConfiguration = usb.UsbEndpointConfiguration;
-pub const UsbDir = usb.UsbDir;
-pub const UsbTransferType = usb.UsbTransferType;
+pub const DeviceConfiguration = usb.DeviceConfiguration;
+pub const DeviceDescriptor = usb.DeviceDescriptor;
+pub const DescType = usb.DescType;
+pub const InterfaceDescriptor = usb.InterfaceDescriptor;
+pub const ConfigurationDescriptor = usb.ConfigurationDescriptor;
+pub const EndpointDescriptor = usb.EndpointDescriptor;
+pub const EndpointConfiguration = usb.EndpointConfiguration;
+pub const Dir = usb.Dir;
+pub const TransferType = usb.TransferType;
 
-pub var EP0_OUT_CFG: usb.UsbEndpointConfiguration = .{
-    .descriptor = &usb.UsbEndpointDescriptor{
-        .length = @intCast(u8, @sizeOf(usb.UsbEndpointDescriptor)),
-        .descriptor_type = usb.UsbDescType.Endpoint,
+pub var EP0_OUT_CFG: usb.EndpointConfiguration = .{
+    .descriptor = &usb.EndpointDescriptor{
+        .length = @intCast(u8, @sizeOf(usb.EndpointDescriptor)),
+        .descriptor_type = usb.DescType.Endpoint,
         .endpoint_address = usb.EP0_OUT_ADDR,
-        .attributes = @enumToInt(usb.UsbTransferType.Control),
+        .attributes = @enumToInt(usb.TransferType.Control),
         .max_packet_size = 64,
         .interval = 0,
     },
@@ -53,12 +53,12 @@ pub var EP0_OUT_CFG: usb.UsbEndpointConfiguration = .{
     .next_pid_1 = false,
 };
 
-pub var EP0_IN_CFG: usb.UsbEndpointConfiguration = .{
-    .descriptor = &usb.UsbEndpointDescriptor{
-        .length = @intCast(u8, @sizeOf(usb.UsbEndpointDescriptor)),
-        .descriptor_type = usb.UsbDescType.Endpoint,
+pub var EP0_IN_CFG: usb.EndpointConfiguration = .{
+    .descriptor = &usb.EndpointDescriptor{
+        .length = @intCast(u8, @sizeOf(usb.EndpointDescriptor)),
+        .descriptor_type = usb.DescType.Endpoint,
         .endpoint_address = usb.EP0_IN_ADDR,
-        .attributes = @enumToInt(usb.UsbTransferType.Control),
+        .attributes = @enumToInt(usb.TransferType.Control),
         .max_packet_size = 64,
         .interval = 0,
     },
@@ -150,7 +150,7 @@ pub const F = struct {
         // We now have the stable 48MHz reference clock required for USB:
     }
 
-    pub fn usb_init_device(device_config: *usb.UsbDeviceConfiguration) void {
+    pub fn usb_init_device(device_config: *usb.DeviceConfiguration) void {
         // Bring USB out of reset
         resets.reset(&.{.usbctrl});
 
@@ -304,7 +304,7 @@ pub const F = struct {
     /// reuse `buffer` immediately after this returns. No need to wait for the
     /// packet to be sent.
     pub fn usb_start_tx(
-        ep: *usb.UsbEndpointConfiguration,
+        ep: *usb.EndpointConfiguration,
         buffer: []const u8,
     ) void {
         // It is technically possible to support longer buffers but this demo
@@ -349,7 +349,7 @@ pub const F = struct {
     }
 
     pub fn usb_start_rx(
-        ep: *usb.UsbEndpointConfiguration,
+        ep: *usb.EndpointConfiguration,
         len: usize,
     ) void {
         // It is technically possible to support longer buffers but this demo
@@ -392,7 +392,7 @@ pub const F = struct {
     ///
     /// One can assume that this function is only called if the
     /// setup request falg is set.
-    pub fn get_setup_packet() usb.UsbSetupPacket {
+    pub fn get_setup_packet() usb.SetupPacket {
         // Clear the status flag (write-one-to-clear)
         peripherals.USBCTRL_REGS.SIE_STATUS.modify(.{ .SETUP_REC = 1 });
 
@@ -411,7 +411,7 @@ pub const F = struct {
         _ = rom.memcpy(setup_packet[0..4], std.mem.asBytes(&spl));
         _ = rom.memcpy(setup_packet[4..8], std.mem.asBytes(&sph));
         // Reinterpret as setup packet
-        return std.mem.bytesToValue(usb.UsbSetupPacket, &setup_packet);
+        return std.mem.bytesToValue(usb.SetupPacket, &setup_packet);
     }
 
     /// Called on a bus reset interrupt
@@ -425,7 +425,7 @@ pub const F = struct {
         peripherals.USBCTRL_REGS.ADDR_ENDP.modify(.{ .ADDRESS = addr });
     }
 
-    pub fn get_EPBIter(dc: *const usb.UsbDeviceConfiguration) usb.EPBIter {
+    pub fn get_EPBIter(dc: *const usb.DeviceConfiguration) usb.EPBIter {
         return .{
             .bufbits = peripherals.USBCTRL_REGS.BUFF_STATUS.raw,
             .device_config = dc,
@@ -440,7 +440,7 @@ pub const F = struct {
 
 /// Check if the corresponding buffer is available
 pub fn buffer_available(
-    ep: *usb.UsbEndpointConfiguration,
+    ep: *usb.EndpointConfiguration,
 ) bool {
     const rbc = read_raw_buffer_control(ep.buffer_control_index);
     // Bit 11 of the EPn_X_BUFFER_CONTROL register represents the AVAILABLE_0 flag
@@ -520,7 +520,7 @@ pub fn next(self: *usb.EPBIter) ?usb.EPB {
     const epnum = @intCast(u8, lowbit_index >> 1);
     // Of the pair, the IN endpoint comes first, followed by OUT, so
     // we can get the direction by:
-    const dir = if (lowbit_index & 1 == 0) usb.UsbDir.In else usb.UsbDir.Out;
+    const dir = if (lowbit_index & 1 == 0) usb.Dir.In else usb.Dir.Out;
 
     const ep_addr = dir.endpoint(epnum);
     // Process the buffer-done event.
@@ -531,7 +531,7 @@ pub fn next(self: *usb.EPBIter) ?usb.EPB {
     // corresponds to this address. We could use a smarter
     // method here, but in practice, the number of endpoints is
     // small so a linear scan doesn't kill us.
-    var endpoint: ?*usb.UsbEndpointConfiguration = null;
+    var endpoint: ?*usb.EndpointConfiguration = null;
     for (self.device_config.endpoints) |ep| {
         if (ep.descriptor.endpoint_address == ep_addr) {
             endpoint = ep;

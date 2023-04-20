@@ -15,7 +15,7 @@ const uart_tx_pin = 0;
 const uart_rx_pin = 1;
 
 // First we define two callbacks that will be used by the endpoints we define next...
-fn ep1_in_callback(dc: *usb.UsbDeviceConfiguration, data: []const u8) void {
+fn ep1_in_callback(dc: *usb.DeviceConfiguration, data: []const u8) void {
     _ = data;
     // The host has collected the data we repeated onto
     // EP1! Set up to receive more data on EP1.
@@ -25,7 +25,7 @@ fn ep1_in_callback(dc: *usb.UsbDeviceConfiguration, data: []const u8) void {
     );
 }
 
-fn ep1_out_callback(dc: *usb.UsbDeviceConfiguration, data: []const u8) void {
+fn ep1_out_callback(dc: *usb.DeviceConfiguration, data: []const u8) void {
     // We've gotten data from the host on our custom
     // EP1! Set up EP1 to repeat it.
     usb.Usb.callbacks.usb_start_tx(
@@ -36,12 +36,12 @@ fn ep1_out_callback(dc: *usb.UsbDeviceConfiguration, data: []const u8) void {
 
 // The endpoints EP0_IN and EP0_OUT are already defined but you can
 // add your own endpoints to...
-pub var EP1_OUT_CFG: usb.UsbEndpointConfiguration = .{
-    .descriptor = &usb.UsbEndpointDescriptor{
-        .length = @intCast(u8, @sizeOf(usb.UsbEndpointDescriptor)),
-        .descriptor_type = usb.UsbDescType.Endpoint,
-        .endpoint_address = usb.UsbDir.Out.endpoint(1),
-        .attributes = @enumToInt(usb.UsbTransferType.Interrupt),
+pub var EP1_OUT_CFG: usb.EndpointConfiguration = .{
+    .descriptor = &usb.EndpointDescriptor{
+        .length = @intCast(u8, @sizeOf(usb.EndpointDescriptor)),
+        .descriptor_type = usb.DescType.Endpoint,
+        .endpoint_address = usb.Dir.Out.endpoint(1),
+        .attributes = @enumToInt(usb.TransferType.Interrupt),
         .max_packet_size = 64,
         .interval = 0,
     },
@@ -53,12 +53,12 @@ pub var EP1_OUT_CFG: usb.UsbEndpointConfiguration = .{
     .callback = ep1_out_callback,
 };
 
-pub var EP1_IN_CFG: usb.UsbEndpointConfiguration = .{
-    .descriptor = &usb.UsbEndpointDescriptor{
-        .length = @intCast(u8, @sizeOf(usb.UsbEndpointDescriptor)),
-        .descriptor_type = usb.UsbDescType.Endpoint,
-        .endpoint_address = usb.UsbDir.In.endpoint(1),
-        .attributes = @enumToInt(usb.UsbTransferType.Interrupt),
+pub var EP1_IN_CFG: usb.EndpointConfiguration = .{
+    .descriptor = &usb.EndpointDescriptor{
+        .length = @intCast(u8, @sizeOf(usb.EndpointDescriptor)),
+        .descriptor_type = usb.DescType.Endpoint,
+        .endpoint_address = usb.Dir.In.endpoint(1),
+        .attributes = @enumToInt(usb.TransferType.Interrupt),
         .max_packet_size = 64,
         .interval = 0,
     },
@@ -71,10 +71,10 @@ pub var EP1_IN_CFG: usb.UsbEndpointConfiguration = .{
 };
 
 // This is our device configuration
-pub var DEVICE_CONFIGURATION: usb.UsbDeviceConfiguration = .{
+pub var DEVICE_CONFIGURATION: usb.DeviceConfiguration = .{
     .device_descriptor = &.{
-        .length = @intCast(u8, @sizeOf(usb.UsbDeviceDescriptor)),
-        .descriptor_type = usb.UsbDescType.Device,
+        .length = @intCast(u8, @sizeOf(usb.DeviceDescriptor)),
+        .descriptor_type = usb.DescType.Device,
         .bcd_usb = 0x0200,
         .device_class = 0,
         .device_subclass = 0,
@@ -91,8 +91,8 @@ pub var DEVICE_CONFIGURATION: usb.UsbDeviceConfiguration = .{
         .num_configurations = 1,
     },
     .interface_descriptor = &.{
-        .length = @intCast(u8, @sizeOf(usb.UsbInterfaceDescriptor)),
-        .descriptor_type = usb.UsbDescType.Interface,
+        .length = @intCast(u8, @sizeOf(usb.InterfaceDescriptor)),
+        .descriptor_type = usb.DescType.Interface,
         .interface_number = 0,
         .alternate_setting = 0,
         // We have two endpoints (EP0 IN/OUT don't count)
@@ -103,9 +103,9 @@ pub var DEVICE_CONFIGURATION: usb.UsbDeviceConfiguration = .{
         .interface_s = 0,
     },
     .config_descriptor = &.{
-        .length = @intCast(u8, @sizeOf(usb.UsbConfigurationDescriptor)),
-        .descriptor_type = usb.UsbDescType.Config,
-        .total_length = @intCast(u8, @sizeOf(usb.UsbConfigurationDescriptor) + @sizeOf(usb.UsbInterfaceDescriptor) + @sizeOf(usb.UsbEndpointDescriptor) + @sizeOf(usb.UsbEndpointDescriptor)),
+        .length = @intCast(u8, @sizeOf(usb.ConfigurationDescriptor)),
+        .descriptor_type = usb.DescType.Config,
+        .total_length = @intCast(u8, @sizeOf(usb.ConfigurationDescriptor) + @sizeOf(usb.InterfaceDescriptor) + @sizeOf(usb.EndpointDescriptor) + @sizeOf(usb.EndpointDescriptor)),
         .num_interfaces = 1,
         .configuration_value = 1,
         .configuration_s = 0,
