@@ -461,7 +461,33 @@ pub fn modify_buffer_control(
         3 => peripherals.USBCTRL_DPRAM.EP1_OUT_BUFFER_CONTROL.modify(fields),
         4 => peripherals.USBCTRL_DPRAM.EP2_IN_BUFFER_CONTROL.modify(fields),
         5 => peripherals.USBCTRL_DPRAM.EP2_OUT_BUFFER_CONTROL.modify(fields),
-        else => unreachable, // TODO: actually reachable but we don't care for now
+        6 => peripherals.USBCTRL_DPRAM.EP3_IN_BUFFER_CONTROL.modify(fields),
+        7 => peripherals.USBCTRL_DPRAM.EP3_OUT_BUFFER_CONTROL.modify(fields),
+        8 => peripherals.USBCTRL_DPRAM.EP4_IN_BUFFER_CONTROL.modify(fields),
+        9 => peripherals.USBCTRL_DPRAM.EP4_OUT_BUFFER_CONTROL.modify(fields),
+        10 => peripherals.USBCTRL_DPRAM.EP5_IN_BUFFER_CONTROL.modify(fields),
+        11 => peripherals.USBCTRL_DPRAM.EP5_OUT_BUFFER_CONTROL.modify(fields),
+        12 => peripherals.USBCTRL_DPRAM.EP6_IN_BUFFER_CONTROL.modify(fields),
+        13 => peripherals.USBCTRL_DPRAM.EP6_OUT_BUFFER_CONTROL.modify(fields),
+        14 => peripherals.USBCTRL_DPRAM.EP7_IN_BUFFER_CONTROL.modify(fields),
+        15 => peripherals.USBCTRL_DPRAM.EP7_OUT_BUFFER_CONTROL.modify(fields),
+        16 => peripherals.USBCTRL_DPRAM.EP8_IN_BUFFER_CONTROL.modify(fields),
+        17 => peripherals.USBCTRL_DPRAM.EP8_OUT_BUFFER_CONTROL.modify(fields),
+        18 => peripherals.USBCTRL_DPRAM.EP9_IN_BUFFER_CONTROL.modify(fields),
+        19 => peripherals.USBCTRL_DPRAM.EP9_OUT_BUFFER_CONTROL.modify(fields),
+        20 => peripherals.USBCTRL_DPRAM.EP10_IN_BUFFER_CONTROL.modify(fields),
+        21 => peripherals.USBCTRL_DPRAM.EP10_OUT_BUFFER_CONTROL.modify(fields),
+        22 => peripherals.USBCTRL_DPRAM.EP11_IN_BUFFER_CONTROL.modify(fields),
+        23 => peripherals.USBCTRL_DPRAM.EP11_OUT_BUFFER_CONTROL.modify(fields),
+        24 => peripherals.USBCTRL_DPRAM.EP12_IN_BUFFER_CONTROL.modify(fields),
+        25 => peripherals.USBCTRL_DPRAM.EP12_OUT_BUFFER_CONTROL.modify(fields),
+        26 => peripherals.USBCTRL_DPRAM.EP13_IN_BUFFER_CONTROL.modify(fields),
+        27 => peripherals.USBCTRL_DPRAM.EP13_OUT_BUFFER_CONTROL.modify(fields),
+        28 => peripherals.USBCTRL_DPRAM.EP14_IN_BUFFER_CONTROL.modify(fields),
+        29 => peripherals.USBCTRL_DPRAM.EP14_OUT_BUFFER_CONTROL.modify(fields),
+        30 => peripherals.USBCTRL_DPRAM.EP15_IN_BUFFER_CONTROL.modify(fields),
+        31 => peripherals.USBCTRL_DPRAM.EP15_OUT_BUFFER_CONTROL.modify(fields),
+        else => {}, // TODO: We'll just ignore it for now
     }
 }
 
@@ -476,7 +502,33 @@ pub fn read_raw_buffer_control(
         3 => peripherals.USBCTRL_DPRAM.EP1_OUT_BUFFER_CONTROL.raw,
         4 => peripherals.USBCTRL_DPRAM.EP2_IN_BUFFER_CONTROL.raw,
         5 => peripherals.USBCTRL_DPRAM.EP2_OUT_BUFFER_CONTROL.raw,
-        else => unreachable, // TODO: actually reachable but we don't care for now
+        6 => peripherals.USBCTRL_DPRAM.EP3_IN_BUFFER_CONTROL.raw,
+        7 => peripherals.USBCTRL_DPRAM.EP3_OUT_BUFFER_CONTROL.raw,
+        8 => peripherals.USBCTRL_DPRAM.EP4_IN_BUFFER_CONTROL.raw,
+        9 => peripherals.USBCTRL_DPRAM.EP4_OUT_BUFFER_CONTROL.raw,
+        10 => peripherals.USBCTRL_DPRAM.EP5_IN_BUFFER_CONTROL.raw,
+        11 => peripherals.USBCTRL_DPRAM.EP5_OUT_BUFFER_CONTROL.raw,
+        12 => peripherals.USBCTRL_DPRAM.EP6_IN_BUFFER_CONTROL.raw,
+        13 => peripherals.USBCTRL_DPRAM.EP6_OUT_BUFFER_CONTROL.raw,
+        14 => peripherals.USBCTRL_DPRAM.EP7_IN_BUFFER_CONTROL.raw,
+        15 => peripherals.USBCTRL_DPRAM.EP7_OUT_BUFFER_CONTROL.raw,
+        16 => peripherals.USBCTRL_DPRAM.EP8_IN_BUFFER_CONTROL.raw,
+        17 => peripherals.USBCTRL_DPRAM.EP8_OUT_BUFFER_CONTROL.raw,
+        18 => peripherals.USBCTRL_DPRAM.EP9_IN_BUFFER_CONTROL.raw,
+        19 => peripherals.USBCTRL_DPRAM.EP9_OUT_BUFFER_CONTROL.raw,
+        20 => peripherals.USBCTRL_DPRAM.EP10_IN_BUFFER_CONTROL.raw,
+        21 => peripherals.USBCTRL_DPRAM.EP10_OUT_BUFFER_CONTROL.raw,
+        22 => peripherals.USBCTRL_DPRAM.EP11_IN_BUFFER_CONTROL.raw,
+        23 => peripherals.USBCTRL_DPRAM.EP11_OUT_BUFFER_CONTROL.raw,
+        24 => peripherals.USBCTRL_DPRAM.EP12_IN_BUFFER_CONTROL.raw,
+        25 => peripherals.USBCTRL_DPRAM.EP12_OUT_BUFFER_CONTROL.raw,
+        26 => peripherals.USBCTRL_DPRAM.EP13_IN_BUFFER_CONTROL.raw,
+        27 => peripherals.USBCTRL_DPRAM.EP13_OUT_BUFFER_CONTROL.raw,
+        28 => peripherals.USBCTRL_DPRAM.EP14_IN_BUFFER_CONTROL.raw,
+        29 => peripherals.USBCTRL_DPRAM.EP14_OUT_BUFFER_CONTROL.raw,
+        30 => peripherals.USBCTRL_DPRAM.EP15_IN_BUFFER_CONTROL.raw,
+        31 => peripherals.USBCTRL_DPRAM.EP15_OUT_BUFFER_CONTROL.raw,
+        else => 0, // TODO: We'll just return 0 for now
     };
 }
 
@@ -492,7 +544,31 @@ pub fn modify_endpoint_control(
         4 => peripherals.USBCTRL_DPRAM.EP2_OUT_CONTROL.modify(fields),
         5 => peripherals.USBCTRL_DPRAM.EP3_IN_CONTROL.modify(fields),
         6 => peripherals.USBCTRL_DPRAM.EP3_OUT_CONTROL.modify(fields),
-        else => unreachable, // TODO: actually reachable but we don't care for now
+        7 => peripherals.USBCTRL_DPRAM.EP4_IN_CONTROL.modify(fields),
+        8 => peripherals.USBCTRL_DPRAM.EP4_OUT_CONTROL.modify(fields),
+        9 => peripherals.USBCTRL_DPRAM.EP5_IN_CONTROL.modify(fields),
+        10 => peripherals.USBCTRL_DPRAM.EP5_OUT_CONTROL.modify(fields),
+        11 => peripherals.USBCTRL_DPRAM.EP6_IN_CONTROL.modify(fields),
+        12 => peripherals.USBCTRL_DPRAM.EP6_OUT_CONTROL.modify(fields),
+        13 => peripherals.USBCTRL_DPRAM.EP7_IN_CONTROL.modify(fields),
+        14 => peripherals.USBCTRL_DPRAM.EP7_OUT_CONTROL.modify(fields),
+        15 => peripherals.USBCTRL_DPRAM.EP8_IN_CONTROL.modify(fields),
+        16 => peripherals.USBCTRL_DPRAM.EP8_OUT_CONTROL.modify(fields),
+        17 => peripherals.USBCTRL_DPRAM.EP9_IN_CONTROL.modify(fields),
+        18 => peripherals.USBCTRL_DPRAM.EP9_OUT_CONTROL.modify(fields),
+        19 => peripherals.USBCTRL_DPRAM.EP10_IN_CONTROL.modify(fields),
+        20 => peripherals.USBCTRL_DPRAM.EP10_OUT_CONTROL.modify(fields),
+        21 => peripherals.USBCTRL_DPRAM.EP11_IN_CONTROL.modify(fields),
+        22 => peripherals.USBCTRL_DPRAM.EP11_OUT_CONTROL.modify(fields),
+        23 => peripherals.USBCTRL_DPRAM.EP12_IN_CONTROL.modify(fields),
+        24 => peripherals.USBCTRL_DPRAM.EP12_OUT_CONTROL.modify(fields),
+        25 => peripherals.USBCTRL_DPRAM.EP13_IN_CONTROL.modify(fields),
+        26 => peripherals.USBCTRL_DPRAM.EP13_OUT_CONTROL.modify(fields),
+        27 => peripherals.USBCTRL_DPRAM.EP14_IN_CONTROL.modify(fields),
+        28 => peripherals.USBCTRL_DPRAM.EP14_OUT_CONTROL.modify(fields),
+        29 => peripherals.USBCTRL_DPRAM.EP15_IN_CONTROL.modify(fields),
+        30 => peripherals.USBCTRL_DPRAM.EP15_OUT_CONTROL.modify(fields),
+        else => {}, // TODO: We'll just ignore it for now
     }
 }
 
@@ -504,7 +580,7 @@ pub fn next(self: *usb.EPBIter) ?usb.EPB {
         peripherals.USBCTRL_REGS.BUFF_STATUS.write_raw(lb);
         self.last_bit = null;
     }
-    // All input buffers handled
+    // All input buffers handled?
     if (self.bufbits == 0) return null;
 
     // Who's still outstanding? Find their bit index by counting how
@@ -568,8 +644,4 @@ pub fn next(self: *usb.EPBIter) ?usb.EPB {
         .endpoint = endpoint.?,
         .buffer = epbuffer[0..len],
     };
-}
-
-test "usb tests" {
-    _ = hid;
 }
