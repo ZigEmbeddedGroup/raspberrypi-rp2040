@@ -8,7 +8,7 @@ const flash = rp2040.flash;
 const time = rp2040.time;
 const gpio = rp2040.gpio;
 const clocks = rp2040.clocks;
-const random = rp2040.random;
+const rand = rp2040.rand;
 
 const led = 25;
 const uart_id = 0;
@@ -40,13 +40,30 @@ pub fn main() !void {
         .clock_config = rp2040.clock_config,
     });
 
+    var rosc_rng = rand.RoscRng.init();
+    var rng = rosc_rng.random();
+
     rp2040.uart.init_logger(uart);
 
-    var buffer: [4]u8 = undefined;
+    var buffer: [8]u8 = undefined;
+    var dist: [256]usize = .{0} ** 256;
+    var counter: usize = 0;
 
     while (true) {
-        random.rand(buffer[0..]);
+        rng.bytes(buffer[0..]);
+        counter += 8;
+        for (buffer) |byte| {
+            dist[@intCast(usize, byte)] += 1;
+        }
         std.log.info("Generate random number: {any}", .{buffer});
+
+        if (counter % 256 == 0) {
+            var i: usize = 0;
+            std.log.info("Distribution:", .{});
+            while (i < 256) : (i += 1) {
+                std.log.info("{} -> {}, {}%", .{ i, dist[i], @intToFloat(f32, dist[i]) / @intToFloat(f32, counter) });
+            }
+        }
         time.sleep_ms(1000);
     }
 }
