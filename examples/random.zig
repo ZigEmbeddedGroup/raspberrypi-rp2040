@@ -40,8 +40,8 @@ pub fn main() !void {
         .clock_config = rp2040.clock_config,
     });
 
-    var rosc_rng = rand.RoscRng.init();
-    var rng = rosc_rng.random();
+    var ascon = rand.Ascon.init();
+    var rng = ascon.random();
 
     rp2040.uart.init_logger(uart);
 
@@ -61,7 +61,7 @@ pub fn main() !void {
             var i: usize = 0;
             std.log.info("Distribution:", .{});
             while (i < 256) : (i += 1) {
-                std.log.info("{} -> {}, {}%", .{ i, dist[i], @intToFloat(f32, dist[i]) / @intToFloat(f32, counter) });
+                std.log.info("{} -> {}, {d:2}%", .{ i, dist[i], @intToFloat(f32, dist[i]) / @intToFloat(f32, counter) });
             }
         }
         time.sleep_ms(1000);
