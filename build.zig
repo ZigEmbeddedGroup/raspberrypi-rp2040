@@ -71,6 +71,7 @@ pub const Examples = struct {
     flash_program: *microzig.EmbeddedExecutable,
     usb_device: *microzig.EmbeddedExecutable,
     usb_hid: *microzig.EmbeddedExecutable,
+    random: *microzig.EmbeddedExecutable,
 
     pub fn init(b: *Builder, optimize: std.builtin.OptimizeMode) Examples {
         var ret: Examples = undefined;
