@@ -130,7 +130,7 @@ pub const F = struct {
         // clock.
         //
         // PLL_USB out of reset
-        resets.reset(&.{.pll_usb});
+        resets.reset(.{ .pll_usb = true });
         // Configure it:
         //
         // RFDIV = 1
