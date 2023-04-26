@@ -8,7 +8,7 @@ const gpio = rp2040.gpio;
 const clocks = rp2040.clocks;
 
 const led = gpio.num(25);
-const uart_id = 0;
+const uart = rp2040.uart.num(0);
 const baud_rate = 115200;
 const uart_tx_pin = gpio.num(0);
 const uart_rx_pin = gpio.num(1);
@@ -31,7 +31,7 @@ pub fn main() !void {
     led.set_direction(.out);
     led.put(1);
 
-    const uart = rp2040.uart.UART.init(uart_id, .{
+    uart.apply(.{
         .baud_rate = baud_rate,
         .tx_pin = uart_tx_pin,
         .rx_pin = uart_rx_pin,

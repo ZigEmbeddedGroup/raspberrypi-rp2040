@@ -8,7 +8,7 @@ const adc = rp2040.adc;
 const time = rp2040.time;
 
 const temp_sensor: adc.Input = .temperature_sensor;
-const uart_id = 0;
+const uart = rp2040.uart.num(0);
 const baud_rate = 115200;
 const uart_tx_pin = gpio.num(0);
 const uart_rx_pin = gpio.num(1);
@@ -18,7 +18,7 @@ pub const std_options = struct {
 };
 
 pub fn main() void {
-    const uart = rp2040.uart.UART.init(uart_id, .{
+    uart.apply(.{
         .baud_rate = baud_rate,
         .tx_pin = uart_tx_pin,
         .rx_pin = uart_rx_pin,

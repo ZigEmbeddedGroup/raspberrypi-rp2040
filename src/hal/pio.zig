@@ -157,7 +157,7 @@ pub const Pio = enum(u1) {
         return @ptrCast(*volatile [32]u32, &regs.INSTR_MEM0);
     }
 
-    pub fn gpio_init(self: Pio, pin: gpio.Gpio) void {
+    pub fn gpio_init(self: Pio, pin: gpio.Pin) void {
         pin.set_function(switch (self) {
             .pio0 => .pio0,
             .pio1 => .pio1,
