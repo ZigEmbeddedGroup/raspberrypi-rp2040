@@ -16,9 +16,9 @@ pub const boot2 = struct {
     /// Size of the second stage bootloader in words
     const BOOT2_SIZE_WORDS = 64;
 
-    /// Buffer for the second stage bootloader
+    // Buffer for the second stage bootloader
     var copyout: [BOOT2_SIZE_WORDS]u32 = undefined;
-    const stage2_boot = @ptrCast(*fn () void, &copyout[0]);
+    //extern fn copyout() void;
     var copyout_valid: bool = false;
 
     /// Copy the 2nd stage bootloader into memory
@@ -33,8 +33,19 @@ pub const boot2 = struct {
     }
 
     pub fn flash_enable_xip() linksection(".time_critical") void {
-        stage2_boot();
-        //rom.flash_enter_cmd_xip()();
+        // Because the copyout symbol is not of type `%function`
+        // we usually get a linker warning. To prevent the warning
+        // we trick the linker by using a register with the blx
+        // instruction. It's important to note that we set the
+        // LSB of the address to 1, to prevent the  processor from
+        // switching back into arm mode, which would lead to a exception.
+        asm volatile (
+            \\push {lr}
+            \\ldr r0, =hal.flash.boot2.copyout
+            \\adds r0, #1
+            \\blx r0 
+            \\pop {pc}
+        );
     }
 };
 
