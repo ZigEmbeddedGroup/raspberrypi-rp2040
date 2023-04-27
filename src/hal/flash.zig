@@ -17,8 +17,10 @@ pub const boot2 = struct {
     const BOOT2_SIZE_WORDS = 64;
 
     // Buffer for the second stage bootloader
+    // Calling into boot2 works because the code will
+    // use the value inside lr as return address if
+    // available.
     var copyout: [BOOT2_SIZE_WORDS]u32 = undefined;
-    //extern fn copyout() void;
     var copyout_valid: bool = false;
 
     /// Copy the 2nd stage bootloader into memory
@@ -29,6 +31,10 @@ pub const boot2 = struct {
         while (i < BOOT2_SIZE_WORDS) : (i += 1) {
             copyout[i] = bootloader[i];
         }
+
+        // No flash access after this point
+        compiler_memory_barrier();
+
         copyout_valid = true;
     }
 
@@ -58,7 +64,8 @@ pub fn range_erase(offset: u32, count: u32) linksection(".time_critical") void {
 
     boot2.flash_init();
 
-    // TODO: __compiler_memory_barrier
+    // No flash access after this point
+    compiler_memory_barrier();
 
     rom.connect_internal_flash()();
     rom.flash_exit_xip()();
@@ -77,7 +84,8 @@ pub fn range_program(offset: u32, data: []const u8) linksection(".time_critical"
 
     boot2.flash_init();
 
-    // TODO: __compiler_memory_barrier
+    // No flash access after this point
+    compiler_memory_barrier();
 
     rom.connect_internal_flash()();
     rom.flash_exit_xip()();
@@ -85,4 +93,12 @@ pub fn range_program(offset: u32, data: []const u8) linksection(".time_critical"
     rom.flash_flush_cache()();
 
     boot2.flash_enable_xip();
+}
+
+/// The compiler will not move the load from some_other_memory_location
+/// above the memory barrier (which it otherwise might - even above the
+/// memory store!). This is achieved using the memory clobber which declares
+/// that the assembly writes to arbitrary undeclared memory locations.
+pub inline fn compiler_memory_barrier() void {
+    asm volatile ("" ::: "memory");
 }
