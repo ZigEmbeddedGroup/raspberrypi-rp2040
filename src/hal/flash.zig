@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const rom = @import("rom.zig");
 
 pub const Command = enum(u8) {
@@ -60,7 +62,8 @@ pub const boot2 = struct {
 /// The offset must be aligned to a 4096-byte sector, and count must
 /// be a multiple of 4096 bytes!
 pub fn range_erase(offset: u32, count: u32) linksection(".time_critical") void {
-    // TODO: add sanity checks, e.g., offset + count < flash size
+    std.debug.assert(offset & (SECTOR_SIZE - 1) == 0); // Is correctly aligned?
+    std.debug.assert(count & (SECTOR_SIZE - 1) == 0); // Is a multiple of the sector size?
 
     boot2.flash_init();
 
@@ -80,7 +83,8 @@ pub fn range_erase(offset: u32, count: u32) linksection(".time_critical") void {
 /// The offset must be aligned to a 256-byte boundary, and the length of data
 /// must be a multiple of 256!
 pub fn range_program(offset: u32, data: []const u8) linksection(".time_critical") void {
-    // TODO: add sanity checks, e.g., offset + count < flash size
+    std.debug.assert(offset & (PAGE_SIZE - 1) == 0); // Is correctly aligned?
+    std.debug.assert(data.len & (PAGE_SIZE - 1) == 0); // Is a multiple of the page size?
 
     boot2.flash_init();
 
