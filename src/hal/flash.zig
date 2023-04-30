@@ -26,7 +26,7 @@ pub const boot2 = struct {
     var copyout_valid: bool = false;
 
     /// Copy the 2nd stage bootloader into memory
-    pub fn flash_init() linksection(".time_critical") void {
+    pub export fn flash_init() linksection(".time_critical") void {
         if (copyout_valid) return;
         const bootloader = @intToPtr([*]u32, XIP_BASE);
         var i: usize = 0;
@@ -40,28 +40,40 @@ pub const boot2 = struct {
         copyout_valid = true;
     }
 
-    pub fn flash_enable_xip() linksection(".time_critical") void {
+    pub export fn flash_enable_xip() linksection(".time_critical") void {
         // Because the copyout symbol is not of type `%function`
         // we usually get a linker warning. To prevent the warning
         // we trick the linker by using a register with the blx
         // instruction. It's important to note that we set the
         // LSB of the address to 1, to prevent the  processor from
         // switching back into arm mode, which would lead to a exception.
-        asm volatile (
-            \\push {lr}
-            \\ldr r0, =hal.flash.boot2.copyout
+        //asm volatile (
+        //    \\push {lr}
+        //    \\ldr r0, [pc, #4]
+        //    \\adds r0, #1
+        //    \\blx r0
+        //    \\pop {pc}
+        //    \\.4byte hal.flash.boot2.copyout
+        //);
+        std.mem.doNotOptimizeAway(asm volatile (
             \\adds r0, #1
-            \\blx r0 
-            \\pop {pc}
-        );
+            \\blx r0
+            :
+            : [copyout] "{r0}" (@ptrToInt(&copyout)),
+            : "r0", "lr"
+        ));
     }
 };
+
+pub fn erase(offset: u32, count: u32) void {
+    range_erase(offset, count);
+}
 
 /// Erase count bytes starting at offset (offset from start of flash)
 ///
 /// The offset must be aligned to a 4096-byte sector, and count must
 /// be a multiple of 4096 bytes!
-pub fn range_erase(offset: u32, count: u32) linksection(".time_critical") void {
+pub export fn range_erase(offset: u32, count: u32) linksection(".time_critical") void {
     std.debug.assert(offset & (SECTOR_SIZE - 1) == 0); // Is correctly aligned?
     std.debug.assert(count & (SECTOR_SIZE - 1) == 0); // Is a multiple of the sector size?
 
@@ -78,13 +90,17 @@ pub fn range_erase(offset: u32, count: u32) linksection(".time_critical") void {
     boot2.flash_enable_xip();
 }
 
+pub fn program(offset: u32, data: []const u8) void {
+    range_program(offset, data.ptr, data.len);
+}
+
 /// Program data to flash starting at offset (offset from the start of flash)
 ///
 /// The offset must be aligned to a 256-byte boundary, and the length of data
 /// must be a multiple of 256!
-pub fn range_program(offset: u32, data: []const u8) linksection(".time_critical") void {
+pub export fn range_program(offset: u32, data: [*]const u8, data_len: usize) linksection(".time_critical") void {
     std.debug.assert(offset & (PAGE_SIZE - 1) == 0); // Is correctly aligned?
-    std.debug.assert(data.len & (PAGE_SIZE - 1) == 0); // Is a multiple of the page size?
+    std.debug.assert(data_len & (PAGE_SIZE - 1) == 0); // Is a multiple of the page size?
 
     boot2.flash_init();
 
@@ -93,7 +109,7 @@ pub fn range_program(offset: u32, data: []const u8) linksection(".time_critical"
 
     rom.connect_internal_flash()();
     rom.flash_exit_xip()();
-    rom.flash_range_program()(offset, data.ptr, data.len);
+    rom.flash_range_program()(offset, data, data_len);
     rom.flash_flush_cache()();
 
     boot2.flash_enable_xip();
