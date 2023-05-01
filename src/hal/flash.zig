@@ -47,14 +47,6 @@ pub const boot2 = struct {
         // instruction. It's important to note that we set the
         // LSB of the address to 1, to prevent the  processor from
         // switching back into arm mode, which would lead to a exception.
-        //asm volatile (
-        //    \\push {lr}
-        //    \\ldr r0, [pc, #4]
-        //    \\adds r0, #1
-        //    \\blx r0
-        //    \\pop {pc}
-        //    \\.4byte hal.flash.boot2.copyout
-        //);
         std.mem.doNotOptimizeAway(asm volatile (
             \\adds r0, #1
             \\blx r0
