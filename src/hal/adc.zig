@@ -84,7 +84,8 @@ pub fn select_input(in: Input) void {
 /// Get the currently selected analog input. 0..3 are GPIO 26..29 respectively,
 /// 4 is the temperature sensor.
 pub fn get_selected_input() Input {
-    return @intToEnum(Input, ADC.CS.read().AINSEL);
+    const cs = ADC.SC.read();
+    return @intToEnum(Input, cs.AINSEL);
 }
 
 pub const Input = enum(u3) {
@@ -182,7 +183,8 @@ pub fn start(mode: Mode) void {
 
 /// Check whether the ADC controller has a conversion result
 pub fn is_ready() bool {
-    return ADC.CS.read().READY == 0;
+    const cs = ADC.CS.read();
+    return cs.READY != 0;
 }
 
 /// Single-shot, blocking conversion
@@ -265,24 +267,28 @@ pub const fifo = struct {
 
     /// Check if the ADC FIFO is full.
     pub fn is_full() bool {
-        return ADC.FSC.read().FULL != 0;
+        const fsc = ADC.FSC.read();
+        return fsc.FULL != 0;
     }
 
     /// Check if the ADC FIFO is empty.
     pub fn is_empty() bool {
-        return ADC.FSC.read().EMPTY != 0;
+        const fsc = ADC.FSC.read();
+        return fsc.EMPTY != 0;
     }
 
     /// Get the number of conversion in the ADC FIFO.
     pub fn get_level() u4 {
-        return ADC.FSC.read().LEVEL;
+        const fsc = ADC.FSC.read();
+        return fsc.LEVEL;
     }
 
     /// Check if the ADC FIFO has overflowed. When overflow happens, the new
     /// conversion is discarded. This flag is sticky, to clear it call
     /// `clear_overflowed()`.
     pub fn has_overflowed() bool {
-        return ADC.FSC.read().OVER != 0;
+        const fsc = ADC.FSC.read();
+        return fsc.OVER != 0;
     }
 
     /// Clear the overflow status flag if it is set.
@@ -294,7 +300,8 @@ pub const fifo = struct {
     /// register was read while the FIFO was empty. This flag is sticky, to
     /// clear it call `clear_underflowed()`.
     pub fn has_underflowed() bool {
-        return ADC.FSC.read().UNDER != 0;
+        const fsc = ADC.FSC.read();
+        return fsc.UNDER != 0;
     }
 
     /// Clear the underflow status flag if it is set.
