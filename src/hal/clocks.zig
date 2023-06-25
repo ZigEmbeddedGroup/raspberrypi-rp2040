@@ -83,10 +83,10 @@ pub const Generator = enum(u32) {
         assert(24 == @sizeOf([2]GeneratorRegs));
     }
 
-    const generators = @ptrCast(*volatile [@typeInfo(Generator).Enum.fields.len]GeneratorRegs, CLOCKS);
+    const generators: *volatile [@typeInfo(Generator).Enum.fields.len]GeneratorRegs = @ptrCast(CLOCKS);
 
     fn get_regs(generator: Generator) *volatile GeneratorRegs {
-        return &generators[@enumToInt(generator)];
+        return &generators[@intFromEnum(generator)];
     }
 
     pub fn has_glitchless_mux(generator: Generator) bool {
@@ -617,7 +617,7 @@ pub const Configuration = struct {
         // source frequency has to be faster because dividing will always reduce.
         assert(input.freq >= output_freq);
 
-        const div = @intCast(u32, (@intCast(u64, input.freq) << 8) / output_freq);
+        const div: u32 = @intCast((@as(u64, @intCast(input.freq)) << 8) / output_freq);
 
         // check divisor
         if (div > generator.get_div())
@@ -666,7 +666,7 @@ pub fn count_frequency_khz(source: Source, comptime clock_config: GlobalConfigur
     CLOCKS.FC0_INTERVAL.raw = 10;
     CLOCKS.FC0_MIN_KHZ.raw = 0;
     CLOCKS.FC0_MAX_KHZ.raw = std.math.maxInt(u32);
-    CLOCKS.FC0_SRC.raw = @enumToInt(source);
+    CLOCKS.FC0_SRC.raw = @intFromEnum(source);
 
     while (CLOCKS.FC0_STATUS.read().DONE != 1) {}
 

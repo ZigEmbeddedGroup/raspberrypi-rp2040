@@ -38,10 +38,10 @@ fn ep1_out_callback(dc: *usb.DeviceConfiguration, data: []const u8) void {
 // add your own endpoints to...
 pub var EP1_OUT_CFG: usb.EndpointConfiguration = .{
     .descriptor = &usb.EndpointDescriptor{
-        .length = @intCast(u8, @sizeOf(usb.EndpointDescriptor)),
+        .length = @intCast(@sizeOf(usb.EndpointDescriptor)),
         .descriptor_type = usb.DescType.Endpoint,
         .endpoint_address = usb.Dir.Out.endpoint(1),
-        .attributes = @enumToInt(usb.TransferType.Bulk),
+        .attributes = @intFromEnum(usb.TransferType.Bulk),
         .max_packet_size = 64,
         .interval = 0,
     },
@@ -55,10 +55,10 @@ pub var EP1_OUT_CFG: usb.EndpointConfiguration = .{
 
 pub var EP1_IN_CFG: usb.EndpointConfiguration = .{
     .descriptor = &usb.EndpointDescriptor{
-        .length = @intCast(u8, @sizeOf(usb.EndpointDescriptor)),
+        .length = @intCast(@sizeOf(usb.EndpointDescriptor)),
         .descriptor_type = usb.DescType.Endpoint,
         .endpoint_address = usb.Dir.In.endpoint(1),
-        .attributes = @enumToInt(usb.TransferType.Bulk),
+        .attributes = @intFromEnum(usb.TransferType.Bulk),
         .max_packet_size = 64,
         .interval = 0,
     },
@@ -72,8 +72,8 @@ pub var EP1_IN_CFG: usb.EndpointConfiguration = .{
 
 // This is our device configuration
 pub var DEVICE_CONFIGURATION: usb.DeviceConfiguration = .{
-    .device_descriptor = &.{
-        .length = @intCast(u8, @sizeOf(usb.DeviceDescriptor)),
+    .device_descriptor = &usb.DeviceDescriptor{
+        .length = @intCast(@sizeOf(usb.DeviceDescriptor)),
         .descriptor_type = usb.DescType.Device,
         .bcd_usb = 0x0110,
         .device_class = 0,
@@ -88,8 +88,8 @@ pub var DEVICE_CONFIGURATION: usb.DeviceConfiguration = .{
         .serial_s = 0,
         .num_configurations = 1,
     },
-    .interface_descriptor = &.{
-        .length = @intCast(u8, @sizeOf(usb.InterfaceDescriptor)),
+    .interface_descriptor = &usb.InterfaceDescriptor{
+        .length = @intCast(@sizeOf(usb.InterfaceDescriptor)),
         .descriptor_type = usb.DescType.Interface,
         .interface_number = 0,
         .alternate_setting = 0,
@@ -100,10 +100,10 @@ pub var DEVICE_CONFIGURATION: usb.DeviceConfiguration = .{
         .interface_protocol = 0,
         .interface_s = 0,
     },
-    .config_descriptor = &.{
-        .length = @intCast(u8, @sizeOf(usb.ConfigurationDescriptor)),
+    .config_descriptor = &usb.ConfigurationDescriptor{
+        .length = @intCast(@sizeOf(usb.ConfigurationDescriptor)),
         .descriptor_type = usb.DescType.Config,
-        .total_length = @intCast(u8, @sizeOf(usb.ConfigurationDescriptor) + @sizeOf(usb.InterfaceDescriptor) + @sizeOf(usb.EndpointDescriptor) + @sizeOf(usb.EndpointDescriptor)),
+        .total_length = @intCast(@sizeOf(usb.ConfigurationDescriptor) + @sizeOf(usb.InterfaceDescriptor) + @sizeOf(usb.EndpointDescriptor) + @sizeOf(usb.EndpointDescriptor)),
         .num_interfaces = 1,
         .configuration_value = 1,
         .configuration_s = 0,
@@ -113,8 +113,8 @@ pub var DEVICE_CONFIGURATION: usb.DeviceConfiguration = .{
     .lang_descriptor = "\x04\x03\x09\x04", // length || string descriptor (0x03) || Engl (0x0409)
     .descriptor_strings = &.{
         // ugly unicode :|
-        "R\x00a\x00s\x00p\x00b\x00e\x00r\x00r\x00y\x00 \x00P\x00i\x00",
-        "P\x00i\x00c\x00o\x00 \x00T\x00e\x00s\x00t\x00 \x00D\x00e\x00v\x00i\x00c\x00e\x00",
+        &usb.utf8ToUtf16Le("Raspberry Pi"),
+        &usb.utf8ToUtf16Le("Pico Test Device"),
     },
     // Here we pass all endpoints to the config
     // Dont forget to pass EP0_[IN|OUT] in the order seen below!

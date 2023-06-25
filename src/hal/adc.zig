@@ -17,12 +17,12 @@ pub const Error = error{
 
 /// temp_sensor is not valid because you can refer to it by name.
 pub fn input(n: u2) Input {
-    return @intToEnum(Input, n);
+    return @enumFromInt(n);
 }
 
 /// Enable the ADC controller.
 pub fn set_enabled(enabled: bool) void {
-    ADC.CS.modify(.{ .EN = @boolToInt(enabled) });
+    ADC.CS.modify(.{ .EN = @intFromBool(enabled) });
 }
 
 const Config = struct {
@@ -41,7 +41,7 @@ const Config = struct {
 pub fn apply(config: Config) void {
     ADC.CS.write(.{
         .EN = 0,
-        .TS_EN = @boolToInt(config.temp_sensor_enabled),
+        .TS_EN = @intFromBool(config.temp_sensor_enabled),
         .START_ONCE = 0,
         .START_MANY = 0,
         .READY = 0,
@@ -50,7 +50,7 @@ pub fn apply(config: Config) void {
         .ERR_STICKY = 0,
         .AINSEL = 0,
         .RROBIN = if (config.round_robin) |rr|
-            @bitCast(u5, rr)
+            @bitCast(rr)
         else
             0,
 
@@ -63,8 +63,8 @@ pub fn apply(config: Config) void {
     if (config.sample_frequency) |sample_frequency| {
         const cycles = (48_000_000 * 256) / @as(u64, sample_frequency);
         ADC.DIV.write(.{
-            .FRAC = @truncate(u8, cycles),
-            .INT = @intCast(u16, (cycles >> 8) - 1),
+            .FRAC = @as(u8, @truncate(cycles)),
+            .INT = @as(u16, @intCast((cycles >> 8) - 1)),
 
             .padding = 0,
         });
@@ -78,14 +78,14 @@ pub fn apply(config: Config) void {
 
 /// Select analog input for next conversion.
 pub fn select_input(in: Input) void {
-    ADC.CS.modify(.{ .AINSEL = @enumToInt(in) });
+    ADC.CS.modify(.{ .AINSEL = @intFromEnum(in) });
 }
 
 /// Get the currently selected analog input. 0..3 are GPIO 26..29 respectively,
 /// 4 is the temperature sensor.
 pub fn get_selected_input() Input {
     const cs = ADC.SC.read();
-    return @intToEnum(Input, cs.AINSEL);
+    return @enumFromInt(cs.AINSEL);
 }
 
 pub const Input = enum(u3) {
@@ -98,7 +98,7 @@ pub const Input = enum(u3) {
     /// temp_sensor.
     pub fn get_gpio_pin(in: Input) gpio.Pin {
         return switch (in) {
-            else => gpio.num(@as(u5, @enumToInt(in)) + 26),
+            else => gpio.num(@as(u5, @intFromEnum(in)) + 26),
             .temp_sensor => @panic("temp_sensor doesn't have a pin"),
         };
     }
@@ -120,13 +120,13 @@ pub const Input = enum(u3) {
 
 /// Set to true to power on the temperature sensor.
 pub fn set_temp_sensor_enabled(enable: bool) void {
-    ADC.CS.modify(.{ .TS_EN = @boolToInt(enable) });
+    ADC.CS.modify(.{ .TS_EN = @intFromBool(enable) });
 }
 
 /// T must be floating point.
 pub fn temp_sensor_result_to_celcius(comptime T: type, comptime vref: T, result: u12) T {
     // TODO: consider fixed-point
-    const raw = @intToFloat(T, result);
+    const raw: T = @floatFromInt(result);
     const voltage: T = vref * raw / 0x0fff;
     return (27.0 - ((voltage - 0.706) / 0.001721));
 }
@@ -144,7 +144,7 @@ pub const InputMask = packed struct(u5) {
 /// 0 will disable round-robin mode but `disableRoundRobin()` is provided so
 /// the user may be explicit.
 pub fn round_robin_set(enabled_inputs: InputMask) void {
-    ADC.CS.modify(.{ .RROBIN = @bitCast(u5, enabled_inputs) });
+    ADC.CS.modify(.{ .RROBIN = @bitCast(enabled_inputs) });
 }
 
 /// Disable round-robin sample mode.
@@ -228,9 +228,9 @@ pub const fifo = struct {
     /// Apply ADC FIFO configuration and enable it
     pub fn apply(config: fifo.Config) void {
         ADC.FCS.write(.{
-            .DREQ_EN = @boolToInt(config.dreq_enabled),
+            .DREQ_EN = @intFromBool(config.dreq_enabled),
             .THRESH = config.thresh,
-            .SHIFT = @boolToInt(config.shift),
+            .SHIFT = @intFromBool(config.shift),
 
             .EN = 1,
             .EMPTY = 0,
@@ -260,7 +260,7 @@ pub const fifo = struct {
     pub fn irq_set_enabled(enable: bool) void {
         // TODO: check if this works
         ADC.INTE.write(.{
-            .FIFO = @boolToInt(enable),
+            .FIFO = @intFromBool(enable),
             .padding = 0,
         });
     }

@@ -34,23 +34,24 @@ const ws2812_program = blk: {
 
 const pio: Pio = .pio0;
 const sm: StateMachine = .sm0;
-const led_pin = gpio.num(23);
+const led_pin = gpio.num(0);
+const LEDS = 140;
 
 pub fn main() void {
     pio.gpio_init(led_pin);
-    sm_set_consecutive_pindirs(pio, sm, @enumToInt(led_pin), 1, true);
+    sm_set_consecutive_pindirs(pio, sm, @intFromEnum(led_pin), 1, true);
 
     const cycles_per_bit: comptime_int = ws2812_program.defines[0].value + //T1
         ws2812_program.defines[1].value + //T2
         ws2812_program.defines[2].value; //T3
-    const div = @intToFloat(f32, rp2040.clock_config.sys.?.output_freq) /
+    const div = @as(f32, @floatFromInt(rp2040.clock_config.sys.?.output_freq)) /
         (800_000 * cycles_per_bit);
 
     pio.sm_load_and_start_program(sm, ws2812_program, .{
         .clkdiv = rp2040.pio.ClkDivOptions.from_float(div),
         .pin_mappings = .{
             .side_set = .{
-                .base = @enumToInt(led_pin),
+                .base = @intFromEnum(led_pin),
                 .count = 1,
             },
         },
@@ -85,7 +86,7 @@ fn sm_set_consecutive_pindirs(_pio: Pio, _sm: StateMachine, pin: u5, count: u3, 
         .delay_side_set = 0,
         .payload = .{
             .set = .{
-                .data = @boolToInt(is_out),
+                .data = @intFromBool(is_out),
                 .destination = .pindirs,
             },
         },

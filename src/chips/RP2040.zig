@@ -2,24 +2,36 @@ const micro = @import("microzig");
 const mmio = micro.mmio;
 
 pub const devices = struct {
+    ///  Dual-core Arm Cortex-M0+ processor, flexible clock running up to 133 MHz
+    ///  264KB on-chip SRAM
+    ///  2 x UART, 2 x SPI controllers, 2 x I2C controllers, 16 x PWM channels
+    ///  1 x USB 1.1 controller and PHY, with host and device support
+    ///  8 x Programmable I/O (PIO) state machines for custom peripheral support
+    ///  Supported input power 1.8-5.5V DC
+    ///  Operating temperature -20C to +85C
+    ///  Drag-and-drop programming using mass storage over USB
+    ///  Low-power sleep and dormant modes
+    ///  Accurate on-chip clock
+    ///  Temperature sensor
+    ///  Accelerated integer and floating-point libraries on-chip
     pub const RP2040 = struct {
         pub const properties = struct {
-            pub const @"cpu.nvic_prio_bits" = "2";
-            pub const @"cpu.mpu" = "true";
-            pub const @"cpu.fpu" = "false";
-            pub const @"cpu.num_interrupts" = "26";
-            pub const @"cpu.vtor" = "1";
-            pub const @"cpu.revision" = "r0p1";
-            pub const @"cpu.vendor_systick_config" = "false";
+            pub const @"cpu.endian" = "little";
+            pub const @"cpu.mpuPresent" = "true";
             pub const license =
                 \\
-                \\    Copyright (c) 2020 Raspberry Pi (Trading) Ltd. \n
+                \\    Copyright (c) 2020 Raspberry Pi (Trading) Ltd.\n
                 \\    \n
                 \\    SPDX-License-Identifier: BSD-3-Clause
                 \\  
             ;
             pub const @"cpu.name" = "CM0PLUS";
-            pub const @"cpu.endian" = "little";
+            pub const @"cpu.revision" = "r0p1";
+            pub const @"cpu.nvicPrioBits" = "2";
+            pub const @"cpu.deviceNumInterrupts" = "26";
+            pub const @"cpu.vendorSystickConfig" = "false";
+            pub const @"cpu.fpuPresent" = "false";
+            pub const @"cpu.vtorPresent" = "1";
         };
 
         pub const VectorTable = extern struct {
@@ -64,57 +76,55 @@ pub const devices = struct {
         };
 
         pub const peripherals = struct {
-            ///  System Control Space
-            pub const MPU = @intToPtr(*volatile types.peripherals.SCS, 0xd90);
             ///  QSPI flash execute-in-place block
-            pub const XIP_CTRL = @intToPtr(*volatile types.peripherals.XIP_CTRL, 0x14000000);
+            pub const XIP_CTRL = @as(*volatile types.peripherals.XIP_CTRL, @ptrFromInt(0x14000000));
             ///  DW_apb_ssi has the following features:
-            ///  * APB interface – Allows for easy integration into a DesignWare Synthesizable Components for AMBA 2 implementation.
+            ///  * APB interface - Allows for easy integration into a DesignWare Synthesizable Components for AMBA 2 implementation.
             ///  * APB3 and APB4 protocol support.
-            ///  * Scalable APB data bus width – Supports APB data bus widths of 8, 16, and 32 bits.
-            ///  * Serial-master or serial-slave operation – Enables serial communication with serial-master or serial-slave peripheral devices.
+            ///  * Scalable APB data bus width - Supports APB data bus widths of 8, 16, and 32 bits.
+            ///  * Serial-master or serial-slave operation - Enables serial communication with serial-master or serial-slave peripheral devices.
             ///  * Programmable Dual/Quad/Octal SPI support in Master Mode.
             ///  * Dual Data Rate (DDR) and Read Data Strobe (RDS) Support - Enables the DW_apb_ssi master to perform operations with the device in DDR and RDS modes when working in Dual/Quad/Octal mode of operation.
             ///  * Data Mask Support - Enables the DW_apb_ssi to selectively update the bytes in the device. This feature is applicable only in enhanced SPI modes.
             ///  * eXecute-In-Place (XIP) support - Enables the DW_apb_ssi master to behave as a memory mapped I/O and fetches the data from the device based on the APB read request. This feature is applicable only in enhanced SPI modes.
-            ///  * DMA Controller Interface – Enables the DW_apb_ssi to interface to a DMA controller over the bus using a handshaking interface for transfer requests.
-            ///  * Independent masking of interrupts – Master collision, transmit FIFO overflow, transmit FIFO empty, receive FIFO full, receive FIFO underflow, and receive FIFO overflow interrupts can all be masked independently.
-            ///  * Multi-master contention detection – Informs the processor of multiple serial-master accesses on the serial bus.
-            ///  * Bypass of meta-stability flip-flops for synchronous clocks – When the APB clock (pclk) and the DW_apb_ssi serial clock (ssi_clk) are synchronous, meta-stable flip-flops are not used when transferring control signals across these clock domains.
+            ///  * DMA Controller Interface - Enables the DW_apb_ssi to interface to a DMA controller over the bus using a handshaking interface for transfer requests.
+            ///  * Independent masking of interrupts - Master collision, transmit FIFO overflow, transmit FIFO empty, receive FIFO full, receive FIFO underflow, and receive FIFO overflow interrupts can all be masked independently.
+            ///  * Multi-master contention detection - Informs the processor of multiple serial-master accesses on the serial bus.
+            ///  * Bypass of meta-stability flip-flops for synchronous clocks - When the APB clock (pclk) and the DW_apb_ssi serial clock (ssi_clk) are synchronous, meta-stable flip-flops are not used when transferring control signals across these clock domains.
             ///  * Programmable delay on the sample time of the received serial data bit (rxd); enables programmable control of routing delays resulting in higher serial data-bit rates.
             ///  * Programmable features:
-            ///  - Serial interface operation – Choice of Motorola SPI, Texas Instruments Synchronous Serial Protocol or National Semiconductor Microwire.
-            ///  - Clock bit-rate – Dynamic control of the serial bit rate of the data transfer; used in only serial-master mode of operation.
-            ///  - Data Item size (4 to 32 bits) – Item size of each data transfer under the control of the programmer.
+            ///  - Serial interface operation - Choice of Motorola SPI, Texas Instruments Synchronous Serial Protocol or National Semiconductor Microwire.
+            ///  - Clock bit-rate - Dynamic control of the serial bit rate of the data transfer; used in only serial-master mode of operation.
+            ///  - Data Item size (4 to 32 bits) - Item size of each data transfer under the control of the programmer.
             ///  * Configured features:
-            ///  - FIFO depth – 16 words deep. The FIFO width is fixed at 32 bits.
+            ///  - FIFO depth - 16 words deep. The FIFO width is fixed at 32 bits.
             ///  - 1 slave select output.
-            ///  - Hardware slave-select – Dedicated hardware slave-select line.
+            ///  - Hardware slave-select - Dedicated hardware slave-select line.
             ///  - Combined interrupt line - one combined interrupt line from the DW_apb_ssi to the interrupt controller.
-            ///  - Interrupt polarity – active high interrupt lines.
-            ///  - Serial clock polarity – low serial-clock polarity directly after reset.
-            ///  - Serial clock phase – capture on first edge of serial-clock directly after reset.
-            pub const XIP_SSI = @intToPtr(*volatile types.peripherals.XIP_SSI, 0x18000000);
-            pub const SYSINFO = @intToPtr(*volatile types.peripherals.SYSINFO, 0x40000000);
+            ///  - Interrupt polarity - active high interrupt lines.
+            ///  - Serial clock polarity - low serial-clock polarity directly after reset.
+            ///  - Serial clock phase - capture on first edge of serial-clock directly after reset.
+            pub const XIP_SSI = @as(*volatile types.peripherals.XIP_SSI, @ptrFromInt(0x18000000));
+            pub const SYSINFO = @as(*volatile types.peripherals.SYSINFO, @ptrFromInt(0x40000000));
             ///  Register block for various chip control signals
-            pub const SYSCFG = @intToPtr(*volatile types.peripherals.SYSCFG, 0x40004000);
-            pub const CLOCKS = @intToPtr(*volatile types.peripherals.CLOCKS, 0x40008000);
-            pub const RESETS = @intToPtr(*volatile types.peripherals.RESETS, 0x4000c000);
-            pub const PSM = @intToPtr(*volatile types.peripherals.PSM, 0x40010000);
-            pub const IO_BANK0 = @intToPtr(*volatile types.peripherals.IO_BANK0, 0x40014000);
-            pub const IO_QSPI = @intToPtr(*volatile types.peripherals.IO_QSPI, 0x40018000);
-            pub const PADS_BANK0 = @intToPtr(*volatile types.peripherals.PADS_BANK0, 0x4001c000);
-            pub const PADS_QSPI = @intToPtr(*volatile types.peripherals.PADS_QSPI, 0x40020000);
+            pub const SYSCFG = @as(*volatile types.peripherals.SYSCFG, @ptrFromInt(0x40004000));
+            pub const CLOCKS = @as(*volatile types.peripherals.CLOCKS, @ptrFromInt(0x40008000));
+            pub const RESETS = @as(*volatile types.peripherals.RESETS, @ptrFromInt(0x4000c000));
+            pub const PSM = @as(*volatile types.peripherals.PSM, @ptrFromInt(0x40010000));
+            pub const IO_BANK0 = @as(*volatile types.peripherals.IO_BANK0, @ptrFromInt(0x40014000));
+            pub const IO_QSPI = @as(*volatile types.peripherals.IO_QSPI, @ptrFromInt(0x40018000));
+            pub const PADS_BANK0 = @as(*volatile types.peripherals.PADS_BANK0, @ptrFromInt(0x4001c000));
+            pub const PADS_QSPI = @as(*volatile types.peripherals.PADS_QSPI, @ptrFromInt(0x40020000));
             ///  Controls the crystal oscillator
-            pub const XOSC = @intToPtr(*volatile types.peripherals.XOSC, 0x40024000);
-            pub const PLL_SYS = @intToPtr(*volatile types.peripherals.PLL_SYS, 0x40028000);
-            pub const PLL_USB = @intToPtr(*volatile types.peripherals.PLL_SYS, 0x4002c000);
+            pub const XOSC = @as(*volatile types.peripherals.XOSC, @ptrFromInt(0x40024000));
+            pub const PLL_SYS = @as(*volatile types.peripherals.PLL_SYS, @ptrFromInt(0x40028000));
+            pub const PLL_USB = @as(*volatile types.peripherals.PLL_SYS, @ptrFromInt(0x4002c000));
             ///  Register block for busfabric control signals and performance counters
-            pub const BUSCTRL = @intToPtr(*volatile types.peripherals.BUSCTRL, 0x40030000);
-            pub const UART0 = @intToPtr(*volatile types.peripherals.UART0, 0x40034000);
-            pub const UART1 = @intToPtr(*volatile types.peripherals.UART0, 0x40038000);
-            pub const SPI0 = @intToPtr(*volatile types.peripherals.SPI0, 0x4003c000);
-            pub const SPI1 = @intToPtr(*volatile types.peripherals.SPI0, 0x40040000);
+            pub const BUSCTRL = @as(*volatile types.peripherals.BUSCTRL, @ptrFromInt(0x40030000));
+            pub const UART0 = @as(*volatile types.peripherals.UART0, @ptrFromInt(0x40034000));
+            pub const UART1 = @as(*volatile types.peripherals.UART0, @ptrFromInt(0x40038000));
+            pub const SPI0 = @as(*volatile types.peripherals.SPI0, @ptrFromInt(0x4003c000));
+            pub const SPI1 = @as(*volatile types.peripherals.SPI0, @ptrFromInt(0x40040000));
             ///  DW_apb_i2c address block
             ///  List of configuration constants for the Synopsys I2C hardware (you may see references to these in I2C register header; these are *fixed* values, set at hardware design time):
             ///  IC_ULTRA_FAST_MODE ................ 0x0
@@ -185,7 +195,7 @@ pub const devices = struct {
             ///  IC_STOP_DET_IF_MASTER_ACTIVE ...... 0x0
             ///  IC_DEFAULT_UFM_SPKLEN ............. 0x1
             ///  IC_TX_BUFFER_DEPTH ................ 16
-            pub const I2C0 = @intToPtr(*volatile types.peripherals.I2C0, 0x40044000);
+            pub const I2C0 = @as(*volatile types.peripherals.I2C0, @ptrFromInt(0x40044000));
             ///  DW_apb_i2c address block
             ///  List of configuration constants for the Synopsys I2C hardware (you may see references to these in I2C register header; these are *fixed* values, set at hardware design time):
             ///  IC_ULTRA_FAST_MODE ................ 0x0
@@ -256,11 +266,11 @@ pub const devices = struct {
             ///  IC_STOP_DET_IF_MASTER_ACTIVE ...... 0x0
             ///  IC_DEFAULT_UFM_SPKLEN ............. 0x1
             ///  IC_TX_BUFFER_DEPTH ................ 16
-            pub const I2C1 = @intToPtr(*volatile types.peripherals.I2C0, 0x40048000);
+            pub const I2C1 = @as(*volatile types.peripherals.I2C0, @ptrFromInt(0x40048000));
             ///  Control and data interface to SAR ADC
-            pub const ADC = @intToPtr(*volatile types.peripherals.ADC, 0x4004c000);
+            pub const ADC = @as(*volatile types.peripherals.ADC, @ptrFromInt(0x4004c000));
             ///  Simple PWM
-            pub const PWM = @intToPtr(*volatile types.peripherals.PWM, 0x40050000);
+            pub const PWM = @as(*volatile types.peripherals.PWM, @ptrFromInt(0x40050000));
             ///  Controls time and alarms
             ///  time is a 64 bit value indicating the time in usec since power-on
             ///  timeh is the top 32 bits of time & timel is the bottom 32 bits
@@ -271,390 +281,35 @@ pub const devices = struct {
             ///  An alarm can be cancelled before it has finished by clearing the alarm_enable
             ///  When an alarm fires, the corresponding alarm_irq is set and alarm_running is cleared
             ///  To clear the interrupt write a 1 to the corresponding alarm_irq
-            pub const TIMER = @intToPtr(*volatile types.peripherals.TIMER, 0x40054000);
-            pub const WATCHDOG = @intToPtr(*volatile types.peripherals.WATCHDOG, 0x40058000);
+            pub const TIMER = @as(*volatile types.peripherals.TIMER, @ptrFromInt(0x40054000));
+            pub const WATCHDOG = @as(*volatile types.peripherals.WATCHDOG, @ptrFromInt(0x40058000));
             ///  Register block to control RTC
-            pub const RTC = @intToPtr(*volatile types.peripherals.RTC, 0x4005c000);
-            pub const ROSC = @intToPtr(*volatile types.peripherals.ROSC, 0x40060000);
+            pub const RTC = @as(*volatile types.peripherals.RTC, @ptrFromInt(0x4005c000));
+            pub const ROSC = @as(*volatile types.peripherals.ROSC, @ptrFromInt(0x40060000));
             ///  control and status for on-chip voltage regulator and chip level reset subsystem
-            pub const VREG_AND_CHIP_RESET = @intToPtr(*volatile types.peripherals.VREG_AND_CHIP_RESET, 0x40064000);
+            pub const VREG_AND_CHIP_RESET = @as(*volatile types.peripherals.VREG_AND_CHIP_RESET, @ptrFromInt(0x40064000));
             ///  Testbench manager. Allows the programmer to know what platform their software is running on.
-            pub const TBMAN = @intToPtr(*volatile types.peripherals.TBMAN, 0x4006c000);
+            pub const TBMAN = @as(*volatile types.peripherals.TBMAN, @ptrFromInt(0x4006c000));
             ///  DMA with separate read and write masters
-            pub const DMA = @intToPtr(*volatile types.peripherals.DMA, 0x50000000);
+            pub const DMA = @as(*volatile types.peripherals.DMA, @ptrFromInt(0x50000000));
             ///  DPRAM layout for USB device.
-            pub const USBCTRL_DPRAM = @intToPtr(*volatile types.peripherals.USBCTRL_DPRAM, 0x50100000);
+            pub const USBCTRL_DPRAM = @as(*volatile types.peripherals.USBCTRL_DPRAM, @ptrFromInt(0x50100000));
             ///  USB FS/LS controller device registers
-            pub const USBCTRL_REGS = @intToPtr(*volatile types.peripherals.USBCTRL_REGS, 0x50110000);
+            pub const USBCTRL_REGS = @as(*volatile types.peripherals.USBCTRL_REGS, @ptrFromInt(0x50110000));
             ///  Programmable IO block
-            pub const PIO0 = @intToPtr(*volatile types.peripherals.PIO0, 0x50200000);
+            pub const PIO0 = @as(*volatile types.peripherals.PIO0, @ptrFromInt(0x50200000));
             ///  Programmable IO block
-            pub const PIO1 = @intToPtr(*volatile types.peripherals.PIO0, 0x50300000);
+            pub const PIO1 = @as(*volatile types.peripherals.PIO0, @ptrFromInt(0x50300000));
             ///  Single-cycle IO block
             ///  Provides core-local and inter-core hardware for the two processors, with single-cycle access.
-            pub const SIO = @intToPtr(*volatile types.peripherals.SIO, 0xd0000000);
-            pub const PPB = @intToPtr(*volatile types.peripherals.PPB, 0xe0000000);
-            ///  System Tick Timer
-            pub const SysTick = @intToPtr(*volatile types.peripherals.SysTick, 0xe000e010);
-            ///  System Control Space
-            pub const NVIC = @intToPtr(*volatile types.peripherals.NVIC, 0xe000e100);
-            ///  System Control Space
-            pub const SCB = @intToPtr(*volatile types.peripherals.SCB, 0xe000ed00);
+            pub const SIO = @as(*volatile types.peripherals.SIO, @ptrFromInt(0xd0000000));
+            pub const PPB = @as(*volatile types.peripherals.PPB, @ptrFromInt(0xe0000000));
         };
     };
 };
 
 pub const types = struct {
     pub const peripherals = struct {
-        ///  System Tick Timer
-        pub const SysTick = extern struct {
-            ///  SysTick Control and Status Register
-            CTRL: mmio.Mmio(packed struct(u32) {
-                ENABLE: u1,
-                TICKINT: u1,
-                CLKSOURCE: u1,
-                reserved16: u13,
-                COUNTFLAG: u1,
-                padding: u15,
-            }),
-            ///  SysTick Reload Value Register
-            LOAD: mmio.Mmio(packed struct(u32) {
-                RELOAD: u24,
-                padding: u8,
-            }),
-            ///  SysTick Current Value Register
-            VAL: mmio.Mmio(packed struct(u32) {
-                CURRENT: u24,
-                padding: u8,
-            }),
-            ///  SysTick Calibration Register
-            CALIB: mmio.Mmio(packed struct(u32) {
-                TENMS: u24,
-                reserved30: u6,
-                SKEW: u1,
-                NOREF: u1,
-            }),
-        };
-
-        ///  System Control Block
-        pub const SCB = extern struct {
-            CPUID: mmio.Mmio(packed struct(u32) {
-                REVISION: u4,
-                PARTNO: u12,
-                ARCHITECTURE: u4,
-                VARIANT: u4,
-                IMPLEMENTER: u8,
-            }),
-            ///  Interrupt Control and State Register
-            ICSR: mmio.Mmio(packed struct(u32) {
-                VECTACTIVE: u9,
-                reserved12: u3,
-                VECTPENDING: u9,
-                reserved22: u1,
-                ISRPENDING: u1,
-                ISRPREEMPT: u1,
-                reserved25: u1,
-                PENDSTCLR: u1,
-                PENDSTSET: u1,
-                PENDSVCLR: u1,
-                PENDSVSET: u1,
-                reserved31: u2,
-                NMIPENDSET: u1,
-            }),
-            ///  Vector Table Offset Register
-            VTOR: mmio.Mmio(packed struct(u32) {
-                reserved8: u8,
-                TBLOFF: u24,
-            }),
-            ///  Application Interrupt and Reset Control Register
-            AIRCR: mmio.Mmio(packed struct(u32) {
-                reserved1: u1,
-                VECTCLRACTIVE: u1,
-                SYSRESETREQ: u1,
-                reserved15: u12,
-                ENDIANESS: u1,
-                VECTKEY: u16,
-            }),
-            ///  System Control Register
-            SCR: mmio.Mmio(packed struct(u32) {
-                reserved1: u1,
-                SLEEPONEXIT: u1,
-                SLEEPDEEP: u1,
-                reserved4: u1,
-                SEVONPEND: u1,
-                padding: u27,
-            }),
-            ///  Configuration Control Register
-            CCR: mmio.Mmio(packed struct(u32) {
-                reserved3: u3,
-                UNALIGN_TRP: u1,
-                reserved9: u5,
-                STKALIGN: u1,
-                padding: u22,
-            }),
-            reserved28: [4]u8,
-            ///  System Handlers Priority Registers. [0] is RESERVED
-            SHP: u32,
-            reserved36: [4]u8,
-            ///  System Handler Control and State Register
-            SHCSR: mmio.Mmio(packed struct(u32) {
-                reserved15: u15,
-                SVCALLPENDED: u1,
-                padding: u16,
-            }),
-        };
-
-        ///  Nested Vectored Interrupt Controller
-        pub const NVIC = extern struct {
-            ///  Interrupt Set Enable Register
-            ISER: mmio.Mmio(packed struct(u32) {
-                TIMER_IRQ_0: u1,
-                TIMER_IRQ_1: u1,
-                TIMER_IRQ_2: u1,
-                TIMER_IRQ_3: u1,
-                PWM_IRQ_WRAP: u1,
-                USBCTRL_IRQ: u1,
-                XIP_IRQ: u1,
-                PIO0_IRQ_0: u1,
-                PIO0_IRQ_1: u1,
-                PIO1_IRQ_0: u1,
-                PIO1_IRQ_1: u1,
-                DMA_IRQ_0: u1,
-                DMA_IRQ_1: u1,
-                IO_IRQ_BANK0: u1,
-                IO_IRQ_QSPI: u1,
-                SIO_IRQ_PROC0: u1,
-                SIO_IRQ_PROC1: u1,
-                CLOCKS_IRQ: u1,
-                SPI0_IRQ: u1,
-                SPI1_IRQ: u1,
-                UART0_IRQ: u1,
-                UART1_IRQ: u1,
-                ADC_IRQ_FIFO: u1,
-                I2C0_IRQ: u1,
-                I2C1_IRQ: u1,
-                RTC_IRQ: u1,
-                padding: u6,
-            }),
-            reserved128: [124]u8,
-            ///  Interrupt Clear Enable Register
-            ICER: mmio.Mmio(packed struct(u32) {
-                TIMER_IRQ_0: u1,
-                TIMER_IRQ_1: u1,
-                TIMER_IRQ_2: u1,
-                TIMER_IRQ_3: u1,
-                PWM_IRQ_WRAP: u1,
-                USBCTRL_IRQ: u1,
-                XIP_IRQ: u1,
-                PIO0_IRQ_0: u1,
-                PIO0_IRQ_1: u1,
-                PIO1_IRQ_0: u1,
-                PIO1_IRQ_1: u1,
-                DMA_IRQ_0: u1,
-                DMA_IRQ_1: u1,
-                IO_IRQ_BANK0: u1,
-                IO_IRQ_QSPI: u1,
-                SIO_IRQ_PROC0: u1,
-                SIO_IRQ_PROC1: u1,
-                CLOCKS_IRQ: u1,
-                SPI0_IRQ: u1,
-                SPI1_IRQ: u1,
-                UART0_IRQ: u1,
-                UART1_IRQ: u1,
-                ADC_IRQ_FIFO: u1,
-                I2C0_IRQ: u1,
-                I2C1_IRQ: u1,
-                RTC_IRQ: u1,
-                padding: u6,
-            }),
-            reserved256: [124]u8,
-            ///  Interrupt Set Pending Register
-            ISPR: mmio.Mmio(packed struct(u32) {
-                TIMER_IRQ_0: u1,
-                TIMER_IRQ_1: u1,
-                TIMER_IRQ_2: u1,
-                TIMER_IRQ_3: u1,
-                PWM_IRQ_WRAP: u1,
-                USBCTRL_IRQ: u1,
-                XIP_IRQ: u1,
-                PIO0_IRQ_0: u1,
-                PIO0_IRQ_1: u1,
-                PIO1_IRQ_0: u1,
-                PIO1_IRQ_1: u1,
-                DMA_IRQ_0: u1,
-                DMA_IRQ_1: u1,
-                IO_IRQ_BANK0: u1,
-                IO_IRQ_QSPI: u1,
-                SIO_IRQ_PROC0: u1,
-                SIO_IRQ_PROC1: u1,
-                CLOCKS_IRQ: u1,
-                SPI0_IRQ: u1,
-                SPI1_IRQ: u1,
-                UART0_IRQ: u1,
-                UART1_IRQ: u1,
-                ADC_IRQ_FIFO: u1,
-                I2C0_IRQ: u1,
-                I2C1_IRQ: u1,
-                RTC_IRQ: u1,
-                padding: u6,
-            }),
-            reserved384: [124]u8,
-            ///  Interrupt Clear Pending Register
-            ICPR: mmio.Mmio(packed struct(u32) {
-                TIMER_IRQ_0: u1,
-                TIMER_IRQ_1: u1,
-                TIMER_IRQ_2: u1,
-                TIMER_IRQ_3: u1,
-                PWM_IRQ_WRAP: u1,
-                USBCTRL_IRQ: u1,
-                XIP_IRQ: u1,
-                PIO0_IRQ_0: u1,
-                PIO0_IRQ_1: u1,
-                PIO1_IRQ_0: u1,
-                PIO1_IRQ_1: u1,
-                DMA_IRQ_0: u1,
-                DMA_IRQ_1: u1,
-                IO_IRQ_BANK0: u1,
-                IO_IRQ_QSPI: u1,
-                SIO_IRQ_PROC0: u1,
-                SIO_IRQ_PROC1: u1,
-                CLOCKS_IRQ: u1,
-                SPI0_IRQ: u1,
-                SPI1_IRQ: u1,
-                UART0_IRQ: u1,
-                UART1_IRQ: u1,
-                ADC_IRQ_FIFO: u1,
-                I2C0_IRQ: u1,
-                I2C1_IRQ: u1,
-                RTC_IRQ: u1,
-                padding: u6,
-            }),
-            reserved768: [380]u8,
-            ///  Interrupt Priority Register
-            IPR0: mmio.Mmio(packed struct(u32) {
-                reserved6: u6,
-                TIMER_IRQ_0: u2,
-                reserved14: u6,
-                TIMER_IRQ_1: u2,
-                reserved22: u6,
-                TIMER_IRQ_2: u2,
-                reserved30: u6,
-                TIMER_IRQ_3: u2,
-            }),
-            ///  Interrupt Priority Register
-            IPR1: mmio.Mmio(packed struct(u32) {
-                reserved6: u6,
-                PWM_IRQ_WRAP: u2,
-                reserved14: u6,
-                USBCTRL_IRQ: u2,
-                reserved22: u6,
-                XIP_IRQ: u2,
-                reserved30: u6,
-                PIO0_IRQ_0: u2,
-            }),
-            ///  Interrupt Priority Register
-            IPR2: mmio.Mmio(packed struct(u32) {
-                reserved6: u6,
-                PIO0_IRQ_1: u2,
-                reserved14: u6,
-                PIO1_IRQ_0: u2,
-                reserved22: u6,
-                PIO1_IRQ_1: u2,
-                reserved30: u6,
-                DMA_IRQ_0: u2,
-            }),
-            ///  Interrupt Priority Register
-            IPR3: mmio.Mmio(packed struct(u32) {
-                reserved6: u6,
-                DMA_IRQ_1: u2,
-                reserved14: u6,
-                IO_IRQ_BANK0: u2,
-                reserved22: u6,
-                IO_IRQ_QSPI: u2,
-                reserved30: u6,
-                SIO_IRQ_PROC0: u2,
-            }),
-            ///  Interrupt Priority Register
-            IPR4: mmio.Mmio(packed struct(u32) {
-                reserved6: u6,
-                SIO_IRQ_PROC1: u2,
-                reserved14: u6,
-                CLOCKS_IRQ: u2,
-                reserved22: u6,
-                SPI0_IRQ: u2,
-                reserved30: u6,
-                SPI1_IRQ: u2,
-            }),
-            ///  Interrupt Priority Register
-            IPR5: mmio.Mmio(packed struct(u32) {
-                reserved6: u6,
-                UART0_IRQ: u2,
-                reserved14: u6,
-                UART1_IRQ: u2,
-                reserved22: u6,
-                ADC_IRQ_FIFO: u2,
-                reserved30: u6,
-                I2C0_IRQ: u2,
-            }),
-            ///  Interrupt Priority Register
-            IPR6: mmio.Mmio(packed struct(u32) {
-                reserved6: u6,
-                I2C1_IRQ: u2,
-                reserved14: u6,
-                RTC_IRQ: u2,
-                padding: u16,
-            }),
-            ///  Interrupt Priority Register
-            IPR7: u32,
-        };
-
-        ///  Memory Protection Unit
-        pub const MPU = extern struct {
-            ///  MPU Type Register
-            TYPE: mmio.Mmio(packed struct(u32) {
-                SEPARATE: u1,
-                reserved8: u7,
-                DREGION: u8,
-                IREGION: u8,
-                padding: u8,
-            }),
-            ///  MPU Control Register
-            CTRL: mmio.Mmio(packed struct(u32) {
-                ENABLE: u1,
-                HFNMIENA: u1,
-                PRIVDEFENA: u1,
-                padding: u29,
-            }),
-            ///  MPU Region RNRber Register
-            RNR: mmio.Mmio(packed struct(u32) {
-                REGION: u8,
-                padding: u24,
-            }),
-            ///  MPU Region Base Address Register
-            RBAR: mmio.Mmio(packed struct(u32) {
-                REGION: u4,
-                VALID: u1,
-                reserved8: u3,
-                ADDR: u24,
-            }),
-            ///  MPU Region Attribute and Size Register
-            RASR: mmio.Mmio(packed struct(u32) {
-                ENABLE: u1,
-                SIZE: u5,
-                reserved8: u2,
-                SRD: u8,
-                B: u1,
-                C: u1,
-                S: u1,
-                TEX: u3,
-                reserved24: u2,
-                AP: u3,
-                reserved28: u1,
-                XN: u1,
-                padding: u3,
-            }),
-        };
-
         ///  QSPI flash execute-in-place block
         pub const XIP_CTRL = extern struct {
             ///  Cache control
@@ -744,31 +399,31 @@ pub const types = struct {
         };
 
         ///  DW_apb_ssi has the following features:
-        ///  * APB interface – Allows for easy integration into a DesignWare Synthesizable Components for AMBA 2 implementation.
+        ///  * APB interface - Allows for easy integration into a DesignWare Synthesizable Components for AMBA 2 implementation.
         ///  * APB3 and APB4 protocol support.
-        ///  * Scalable APB data bus width – Supports APB data bus widths of 8, 16, and 32 bits.
-        ///  * Serial-master or serial-slave operation – Enables serial communication with serial-master or serial-slave peripheral devices.
+        ///  * Scalable APB data bus width - Supports APB data bus widths of 8, 16, and 32 bits.
+        ///  * Serial-master or serial-slave operation - Enables serial communication with serial-master or serial-slave peripheral devices.
         ///  * Programmable Dual/Quad/Octal SPI support in Master Mode.
         ///  * Dual Data Rate (DDR) and Read Data Strobe (RDS) Support - Enables the DW_apb_ssi master to perform operations with the device in DDR and RDS modes when working in Dual/Quad/Octal mode of operation.
         ///  * Data Mask Support - Enables the DW_apb_ssi to selectively update the bytes in the device. This feature is applicable only in enhanced SPI modes.
         ///  * eXecute-In-Place (XIP) support - Enables the DW_apb_ssi master to behave as a memory mapped I/O and fetches the data from the device based on the APB read request. This feature is applicable only in enhanced SPI modes.
-        ///  * DMA Controller Interface – Enables the DW_apb_ssi to interface to a DMA controller over the bus using a handshaking interface for transfer requests.
-        ///  * Independent masking of interrupts – Master collision, transmit FIFO overflow, transmit FIFO empty, receive FIFO full, receive FIFO underflow, and receive FIFO overflow interrupts can all be masked independently.
-        ///  * Multi-master contention detection – Informs the processor of multiple serial-master accesses on the serial bus.
-        ///  * Bypass of meta-stability flip-flops for synchronous clocks – When the APB clock (pclk) and the DW_apb_ssi serial clock (ssi_clk) are synchronous, meta-stable flip-flops are not used when transferring control signals across these clock domains.
+        ///  * DMA Controller Interface - Enables the DW_apb_ssi to interface to a DMA controller over the bus using a handshaking interface for transfer requests.
+        ///  * Independent masking of interrupts - Master collision, transmit FIFO overflow, transmit FIFO empty, receive FIFO full, receive FIFO underflow, and receive FIFO overflow interrupts can all be masked independently.
+        ///  * Multi-master contention detection - Informs the processor of multiple serial-master accesses on the serial bus.
+        ///  * Bypass of meta-stability flip-flops for synchronous clocks - When the APB clock (pclk) and the DW_apb_ssi serial clock (ssi_clk) are synchronous, meta-stable flip-flops are not used when transferring control signals across these clock domains.
         ///  * Programmable delay on the sample time of the received serial data bit (rxd); enables programmable control of routing delays resulting in higher serial data-bit rates.
         ///  * Programmable features:
-        ///  - Serial interface operation – Choice of Motorola SPI, Texas Instruments Synchronous Serial Protocol or National Semiconductor Microwire.
-        ///  - Clock bit-rate – Dynamic control of the serial bit rate of the data transfer; used in only serial-master mode of operation.
-        ///  - Data Item size (4 to 32 bits) – Item size of each data transfer under the control of the programmer.
+        ///  - Serial interface operation - Choice of Motorola SPI, Texas Instruments Synchronous Serial Protocol or National Semiconductor Microwire.
+        ///  - Clock bit-rate - Dynamic control of the serial bit rate of the data transfer; used in only serial-master mode of operation.
+        ///  - Data Item size (4 to 32 bits) - Item size of each data transfer under the control of the programmer.
         ///  * Configured features:
-        ///  - FIFO depth – 16 words deep. The FIFO width is fixed at 32 bits.
+        ///  - FIFO depth - 16 words deep. The FIFO width is fixed at 32 bits.
         ///  - 1 slave select output.
-        ///  - Hardware slave-select – Dedicated hardware slave-select line.
+        ///  - Hardware slave-select - Dedicated hardware slave-select line.
         ///  - Combined interrupt line - one combined interrupt line from the DW_apb_ssi to the interrupt controller.
-        ///  - Interrupt polarity – active high interrupt lines.
-        ///  - Serial clock polarity – low serial-clock polarity directly after reset.
-        ///  - Serial clock phase – capture on first edge of serial-clock directly after reset.
+        ///  - Interrupt polarity - active high interrupt lines.
+        ///  - Serial clock polarity - low serial-clock polarity directly after reset.
+        ///  - Serial clock phase - capture on first edge of serial-clock directly after reset.
         pub const XIP_SSI = extern struct {
             ///  Control register 0
             CTRLR0: mmio.Mmio(packed struct(u32) {
@@ -8458,7 +8113,7 @@ pub const types = struct {
             ///  GENERAL CONSTRAINTS:
             ///  Reference clock frequency min=5MHz, max=800MHz
             ///  Feedback divider min=16, max=320
-            ///  VCO frequency min=400MHz, max=1600MHz
+            ///  VCO frequency min=750MHz, max=1600MHz
             CS: mmio.Mmio(packed struct(u32) {
                 ///  Divides the PLL input reference clock.
                 ///  Behaviour is undefined for div=0.
@@ -12452,6 +12107,7 @@ pub const types = struct {
                 SM_ENABLE: u4,
                 ///  Write 1 to instantly clear internal SM state which may be otherwise difficult to access and will affect future execution.
                 ///  Specifically, the following are cleared: input and output shift counters; the contents of the input shift register; the delay counter; the waiting-on-IRQ state; any stalled instruction written to SMx_INSTR or run by OUT/MOV EXEC; any pin write left asserted due to OUT_STICKY.
+                ///  The program counter, the contents of the output shift register and the X/Y scratch registers are not affected.
                 SM_RESTART: u4,
                 ///  Restart a state machine's clock divider from an initial phase of 0. Clock dividers are free-running, so once started, their output (including fractional jitter) is completely determined by the integer/fractional divisor configured in SMx_CLKDIV. This means that, if multiple clock dividers with the same divisor are restarted simultaneously, by writing multiple 1 bits to this field, the execution clocks of those state machines will run in precise lockstep.
                 ///  Note that setting/clearing SM_ENABLE does not stop the clock divider from running, so once multiple state machines' clocks are synchronised, it is safe to disable/reenable a state machine, whilst keeping the clock dividers in sync.
@@ -14486,10 +14142,10 @@ pub const types = struct {
                 BUSY: u1,
                 reserved29: u4,
                 ///  If 1, the channel received a write bus error. Write one to clear.
-                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 5 transfers later)
+                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 5 transfers later)
                 WRITE_ERROR: u1,
                 ///  If 1, the channel received a read bus error. Write one to clear.
-                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 3 transfers later)
+                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 3 transfers later)
                 READ_ERROR: u1,
                 ///  Logical OR of the READ_ERROR and WRITE_ERROR flags. The channel halts when it encounters any bus error, and always raises its channel IRQ flag.
                 AHB_ERROR: u1,
@@ -14607,10 +14263,10 @@ pub const types = struct {
                 BUSY: u1,
                 reserved29: u4,
                 ///  If 1, the channel received a write bus error. Write one to clear.
-                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 5 transfers later)
+                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 5 transfers later)
                 WRITE_ERROR: u1,
                 ///  If 1, the channel received a read bus error. Write one to clear.
-                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 3 transfers later)
+                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 3 transfers later)
                 READ_ERROR: u1,
                 ///  Logical OR of the READ_ERROR and WRITE_ERROR flags. The channel halts when it encounters any bus error, and always raises its channel IRQ flag.
                 AHB_ERROR: u1,
@@ -14728,10 +14384,10 @@ pub const types = struct {
                 BUSY: u1,
                 reserved29: u4,
                 ///  If 1, the channel received a write bus error. Write one to clear.
-                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 5 transfers later)
+                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 5 transfers later)
                 WRITE_ERROR: u1,
                 ///  If 1, the channel received a read bus error. Write one to clear.
-                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 3 transfers later)
+                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 3 transfers later)
                 READ_ERROR: u1,
                 ///  Logical OR of the READ_ERROR and WRITE_ERROR flags. The channel halts when it encounters any bus error, and always raises its channel IRQ flag.
                 AHB_ERROR: u1,
@@ -14849,10 +14505,10 @@ pub const types = struct {
                 BUSY: u1,
                 reserved29: u4,
                 ///  If 1, the channel received a write bus error. Write one to clear.
-                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 5 transfers later)
+                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 5 transfers later)
                 WRITE_ERROR: u1,
                 ///  If 1, the channel received a read bus error. Write one to clear.
-                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 3 transfers later)
+                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 3 transfers later)
                 READ_ERROR: u1,
                 ///  Logical OR of the READ_ERROR and WRITE_ERROR flags. The channel halts when it encounters any bus error, and always raises its channel IRQ flag.
                 AHB_ERROR: u1,
@@ -14970,10 +14626,10 @@ pub const types = struct {
                 BUSY: u1,
                 reserved29: u4,
                 ///  If 1, the channel received a write bus error. Write one to clear.
-                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 5 transfers later)
+                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 5 transfers later)
                 WRITE_ERROR: u1,
                 ///  If 1, the channel received a read bus error. Write one to clear.
-                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 3 transfers later)
+                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 3 transfers later)
                 READ_ERROR: u1,
                 ///  Logical OR of the READ_ERROR and WRITE_ERROR flags. The channel halts when it encounters any bus error, and always raises its channel IRQ flag.
                 AHB_ERROR: u1,
@@ -15091,10 +14747,10 @@ pub const types = struct {
                 BUSY: u1,
                 reserved29: u4,
                 ///  If 1, the channel received a write bus error. Write one to clear.
-                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 5 transfers later)
+                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 5 transfers later)
                 WRITE_ERROR: u1,
                 ///  If 1, the channel received a read bus error. Write one to clear.
-                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 3 transfers later)
+                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 3 transfers later)
                 READ_ERROR: u1,
                 ///  Logical OR of the READ_ERROR and WRITE_ERROR flags. The channel halts when it encounters any bus error, and always raises its channel IRQ flag.
                 AHB_ERROR: u1,
@@ -15212,10 +14868,10 @@ pub const types = struct {
                 BUSY: u1,
                 reserved29: u4,
                 ///  If 1, the channel received a write bus error. Write one to clear.
-                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 5 transfers later)
+                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 5 transfers later)
                 WRITE_ERROR: u1,
                 ///  If 1, the channel received a read bus error. Write one to clear.
-                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 3 transfers later)
+                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 3 transfers later)
                 READ_ERROR: u1,
                 ///  Logical OR of the READ_ERROR and WRITE_ERROR flags. The channel halts when it encounters any bus error, and always raises its channel IRQ flag.
                 AHB_ERROR: u1,
@@ -15333,10 +14989,10 @@ pub const types = struct {
                 BUSY: u1,
                 reserved29: u4,
                 ///  If 1, the channel received a write bus error. Write one to clear.
-                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 5 transfers later)
+                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 5 transfers later)
                 WRITE_ERROR: u1,
                 ///  If 1, the channel received a read bus error. Write one to clear.
-                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 3 transfers later)
+                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 3 transfers later)
                 READ_ERROR: u1,
                 ///  Logical OR of the READ_ERROR and WRITE_ERROR flags. The channel halts when it encounters any bus error, and always raises its channel IRQ flag.
                 AHB_ERROR: u1,
@@ -15454,10 +15110,10 @@ pub const types = struct {
                 BUSY: u1,
                 reserved29: u4,
                 ///  If 1, the channel received a write bus error. Write one to clear.
-                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 5 transfers later)
+                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 5 transfers later)
                 WRITE_ERROR: u1,
                 ///  If 1, the channel received a read bus error. Write one to clear.
-                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 3 transfers later)
+                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 3 transfers later)
                 READ_ERROR: u1,
                 ///  Logical OR of the READ_ERROR and WRITE_ERROR flags. The channel halts when it encounters any bus error, and always raises its channel IRQ flag.
                 AHB_ERROR: u1,
@@ -15575,10 +15231,10 @@ pub const types = struct {
                 BUSY: u1,
                 reserved29: u4,
                 ///  If 1, the channel received a write bus error. Write one to clear.
-                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 5 transfers later)
+                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 5 transfers later)
                 WRITE_ERROR: u1,
                 ///  If 1, the channel received a read bus error. Write one to clear.
-                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 3 transfers later)
+                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 3 transfers later)
                 READ_ERROR: u1,
                 ///  Logical OR of the READ_ERROR and WRITE_ERROR flags. The channel halts when it encounters any bus error, and always raises its channel IRQ flag.
                 AHB_ERROR: u1,
@@ -15696,10 +15352,10 @@ pub const types = struct {
                 BUSY: u1,
                 reserved29: u4,
                 ///  If 1, the channel received a write bus error. Write one to clear.
-                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 5 transfers later)
+                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 5 transfers later)
                 WRITE_ERROR: u1,
                 ///  If 1, the channel received a read bus error. Write one to clear.
-                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 3 transfers later)
+                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 3 transfers later)
                 READ_ERROR: u1,
                 ///  Logical OR of the READ_ERROR and WRITE_ERROR flags. The channel halts when it encounters any bus error, and always raises its channel IRQ flag.
                 AHB_ERROR: u1,
@@ -15817,10 +15473,10 @@ pub const types = struct {
                 BUSY: u1,
                 reserved29: u4,
                 ///  If 1, the channel received a write bus error. Write one to clear.
-                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 5 transfers later)
+                ///  WRITE_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 5 transfers later)
                 WRITE_ERROR: u1,
                 ///  If 1, the channel received a read bus error. Write one to clear.
-                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not to be earlier, or more than 3 transfers later)
+                ///  READ_ADDR shows the approximate address where the bus error was encountered (will not be earlier, or more than 3 transfers later)
                 READ_ERROR: u1,
                 ///  Logical OR of the READ_ERROR and WRITE_ERROR flags. The channel halts when it encounters any bus error, and always raises its channel IRQ flag.
                 AHB_ERROR: u1,

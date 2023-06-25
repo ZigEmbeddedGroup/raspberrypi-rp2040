@@ -22,14 +22,14 @@ pub const Config = struct {
 };
 
 pub fn num(n: u1) SPI {
-    return @intToEnum(SPI, n);
+    return @enumFromInt(n);
 }
 
 pub const SPI = enum(u1) {
     _,
 
     fn get_regs(spi: SPI) *volatile SpiRegs {
-        return switch (@enumToInt(spi)) {
+        return switch (@intFromEnum(spi)) {
             0 => SPI0,
             1 => SPI1,
         };
@@ -161,8 +161,8 @@ pub const SPI = enum(u1) {
         while (postdiv > 1) : (postdiv -= 1) {
             if (freq_in / (prescale * (postdiv - 1)) > baudrate) break;
         }
-        spi_regs.SSPCPSR.modify(.{ .CPSDVSR = @intCast(u8, prescale) });
-        spi_regs.SSPCR0.modify(.{ .SCR = @intCast(u8, postdiv - 1) });
+        spi_regs.SSPCPSR.modify(.{ .CPSDVSR = @as(u8, @intCast(prescale)) });
+        spi_regs.SSPCR0.modify(.{ .SCR = @as(u8, @intCast(postdiv - 1)) });
 
         // Return the frequency we were able to achieve
         return freq_in / (prescale * postdiv);
