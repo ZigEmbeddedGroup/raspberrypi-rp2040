@@ -339,6 +339,28 @@ pub const Pio = enum(u1) {
         self.sm_write(sm, value);
     }
 
+    pub fn sm_is_rx_fifo_empty(self: Pio, sm: StateMachine) bool {
+        const regs = self.get_regs();
+        const rxempty = regs.FSTAT.read().RXEMPTY;
+        return (rxempty & (@as(u4, 1) << @intFromEnum(sm))) != 0;
+    }
+
+    pub fn sm_get_rx_fifo(self: Pio, sm: StateMachine) *volatile u32 {
+        const regs = self.get_regs();
+        const fifos: *volatile [4]u32 = @ptrCast(&regs.RXF0);
+        return &fifos[@intFromEnum(sm)];
+    }
+
+    pub fn sm_read(self: Pio, sm: StateMachine) u32 {
+        const fifo_ptr = self.sm_get_rx_fifo(sm);
+        return fifo_ptr.*;
+    }
+
+    pub fn sm_blocking_read(self: Pio, sm: StateMachine) u32 {
+        while (self.sm_is_rx_fifo_empty(sm)) {}
+        return self.sm_read(sm);
+    }
+
     pub fn sm_set_enabled(self: Pio, sm: StateMachine, enabled: bool) void {
         const regs = self.get_regs();
 
