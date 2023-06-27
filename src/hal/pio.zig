@@ -305,6 +305,15 @@ pub const Pio = enum(u1) {
         });
     }
 
+    pub fn set_input_sync_bypass(self: Pio, pin: gpio.Pin, enabled: bool) void {
+        const pio_regs = self.get_regs();
+        if (enabled) {
+            pio_regs.INPUT_SYNC_BYPASS |= pin.mask();
+        } else {
+            pio_regs.INPUT_SYNC_BYPASS &= ~pin.mask();
+        }
+    }
+
     pub fn sm_is_tx_fifo_full(self: Pio, sm: StateMachine) bool {
         const regs = self.get_regs();
         const txfull = regs.FSTAT.read().TXFULL;
