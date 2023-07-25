@@ -56,13 +56,13 @@ pub fn main() !void {
 
     // Note that a whole number of sectors (4096 bytes) must be erased at a time
     std.log.info("Erasing target region...", .{});
-    flash.range_erase(flash_target_offset, flash.SECTOR_SIZE);
+    flash.erase(flash_target_offset, flash.SECTOR_SIZE);
     std.log.info("Done. Read back target region:", .{});
     std.log.info("data: {s}", .{flash_target_contents[0..flash.PAGE_SIZE]});
 
     // Note that a whole number of pages (256 bytes) must be written at a time
     std.log.info("Programming target region...", .{});
-    flash.range_program(flash_target_offset, &data);
+    flash.program(flash_target_offset, &data);
     std.log.info("Done. Read back target region:", .{});
     std.log.info("data: {s}", .{flash_target_contents[0..flash.PAGE_SIZE]});
 
