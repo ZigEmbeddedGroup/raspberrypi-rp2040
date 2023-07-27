@@ -48,12 +48,16 @@ pub const boot2 = struct {
 ///
 /// The offset must be aligned to a 4096-byte sector, and count must
 /// be a multiple of 4096 bytes!
-pub export fn range_erase(offset: u32, count: u32) linksection(".time_critical") void {
+pub inline fn range_erase(offset: u32, count: u32) void {
+    @call(.never_inline, _range_erase, .{ offset, count });
+}
+
+export fn _range_erase(offset: u32, count: u32) linksection(".time_critical") void {
     // TODO: add sanity checks, e.g., offset + count < flash size
 
-    boot2.flash_init();
+    asm volatile ("" ::: "memory"); // memory barrier
 
-    // TODO: __compiler_memory_barrier
+    boot2.flash_init();
 
     rom.connect_internal_flash()();
     rom.flash_exit_xip()();
@@ -67,12 +71,16 @@ pub export fn range_erase(offset: u32, count: u32) linksection(".time_critical")
 ///
 /// The offset must be aligned to a 256-byte boundary, and the length of data
 /// must be a multiple of 256!
-pub export fn range_program(offset: u32, data: [*]const u8, len: usize) linksection(".time_critical") void {
+pub inline fn range_program(offset: u32, data: []const u8) void {
+    @call(.never_inline, _range_program, .{ offset, data.ptr, data.len });
+}
+
+export fn _range_program(offset: u32, data: [*]const u8, len: usize) linksection(".time_critical") void {
     // TODO: add sanity checks, e.g., offset + count < flash size
 
-    boot2.flash_init();
+    asm volatile ("" ::: "memory"); // memory barrier
 
-    // TODO: __compiler_memory_barrier
+    boot2.flash_init();
 
     rom.connect_internal_flash()();
     rom.flash_exit_xip()();
