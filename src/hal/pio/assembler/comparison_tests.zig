@@ -53,7 +53,7 @@ test "pio.comparison.addition" {
 }
 
 test "pio.comparison.apa102" {
-    @setEvalBranchQuota(10000);
+    @setEvalBranchQuota(11000);
     try pio_comparison(@embedFile("comparison_tests/apa102.pio"));
 }
 
