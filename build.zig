@@ -34,17 +34,27 @@ pub fn addPiPicoExecutable(
     });
 }
 
-// this build script is mostly for testing and verification of this
-// package. In an attempt to modularize -- designing for a case where a
-// project requires multiple HALs, it accepts microzig as a param
+const examples: []const []const u8 = &.{
+    "adc",
+    "blinky",
+    "blinky_core1",
+    "gpio_clk",
+    "i2c_bus_scan",
+    "pwm",
+    "spi_master",
+    "uart",
+    "squarewave",
+    "flash_program",
+    "usb_device",
+    "usb_hid",
+    "ws2812",
+    "random",
+};
+
 pub fn build(b: *Builder) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const args_dep = b.dependency("args", .{});
-    const args_mod = args_dep.module("args");
-
-    var examples = Examples.init(b, optimize);
-    examples.install(b);
 
     const pio_tests = b.addTest(.{
         .root_source_file = .{
@@ -63,50 +73,24 @@ pub fn build(b: *Builder) !void {
         .target = .{},
         .root_source_file = .{ .path = "tools/rp2040-flash.zig" },
     });
-    flash_tool.addModule("args", args_mod);
-
+    flash_tool.addModule("args", args_dep.module("args"));
     b.installArtifact(flash_tool);
+
+    const ci_step = b.step("ci", "Build all example programs and run tests");
+    ci_step.dependOn(test_step);
+
+    // examples
+    for (examples) |example| {
+        const example_exe = addPiPicoExecutable(b, .{
+            .name = b.fmt("example.{s}", .{example}),
+            .source_file = .{ .path = b.fmt("examples/{s}.zig", .{example}) },
+            .optimize = optimize,
+        });
+        example_exe.installArtifact(b);
+        ci_step.dependOn(&example_exe.inner.step);
+    }
 }
 
 fn root() []const u8 {
     return comptime (std.fs.path.dirname(@src().file) orelse ".") ++ "/";
 }
-
-pub const Examples = struct {
-    adc: *microzig.EmbeddedExecutable,
-    blinky: *microzig.EmbeddedExecutable,
-    blinky_core1: *microzig.EmbeddedExecutable,
-    gpio_clk: *microzig.EmbeddedExecutable,
-    i2c_bus_scan: *microzig.EmbeddedExecutable,
-    pwm: *microzig.EmbeddedExecutable,
-    spi_master: *microzig.EmbeddedExecutable,
-    uart: *microzig.EmbeddedExecutable,
-    squarewave: *microzig.EmbeddedExecutable,
-    //uart_pins: microzig.EmbeddedExecutable,
-    flash_program: *microzig.EmbeddedExecutable,
-    usb_device: *microzig.EmbeddedExecutable,
-    usb_hid: *microzig.EmbeddedExecutable,
-    ws2812: *microzig.EmbeddedExecutable,
-    random: *microzig.EmbeddedExecutable,
-
-    pub fn init(b: *Builder, optimize: std.builtin.OptimizeMode) Examples {
-        var ret: Examples = undefined;
-        inline for (@typeInfo(Examples).Struct.fields) |field| {
-            const path = comptime root() ++ "examples/" ++ field.name ++ ".zig";
-
-            @field(ret, field.name) = addPiPicoExecutable(b, .{
-                .name = field.name,
-                .source_file = .{ .path = path },
-                .optimize = optimize,
-            });
-        }
-
-        return ret;
-    }
-
-    pub fn install(examples: *Examples, b: *Builder) void {
-        inline for (@typeInfo(Examples).Struct.fields) |field| {
-            b.installArtifact(@field(examples, field.name).inner);
-        }
-    }
-};
