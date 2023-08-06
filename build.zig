@@ -1,8 +1,9 @@
 const std = @import("std");
-const Builder = std.build.Builder;
-const Pkg = std.build.Pkg;
+const Build = std.Build;
+const Pkg = Build.Pkg;
 const comptimePrint = std.fmt.comptimePrint;
-const LazyPath = std.build.LazyPath;
+const LazyPath = Build.LazyPath;
+const Dependency = Build.Dependency;
 
 const microzig = @import("microzig");
 
@@ -22,10 +23,19 @@ pub const PicoExecutableOptions = struct {
 };
 
 pub fn addPiPicoExecutable(
-    builder: *Builder,
+    b: *Build,
+    rp2040_dep: *Dependency,
     opts: PicoExecutableOptions,
 ) *microzig.EmbeddedExecutable {
-    return microzig.addEmbeddedExecutable(builder, .{
+    return addPiPicoExecutableImpl(b, rp2040_dep.builder.dependency("microzig", .{}), opts);
+}
+
+fn addPiPicoExecutableImpl(
+    b: *Build,
+    microzig_dep: *Dependency,
+    opts: PicoExecutableOptions,
+) *microzig.EmbeddedExecutable {
+    return microzig.addEmbeddedExecutable(b, microzig_dep, .{
         .name = opts.name,
         .source_file = opts.source_file,
         .backing = .{ .board = boards.raspberry_pi_pico },
@@ -37,7 +47,7 @@ pub fn addPiPicoExecutable(
 const examples: []const []const u8 = &.{
     "adc",
     "blinky",
-    "blinky_core1",
+    //"blinky_core1",
     "gpio_clk",
     "i2c_bus_scan",
     "pwm",
@@ -51,7 +61,7 @@ const examples: []const []const u8 = &.{
     "random",
 };
 
-pub fn build(b: *Builder) !void {
+pub fn build(b: *Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const args_dep = b.dependency("args", .{});
@@ -79,9 +89,11 @@ pub fn build(b: *Builder) !void {
     const ci_step = b.step("ci", "Build all example programs and run tests");
     ci_step.dependOn(test_step);
 
+    const microzig_dep = b.dependency("microzig", .{});
+
     // examples
     for (examples) |example| {
-        const example_exe = addPiPicoExecutable(b, .{
+        const example_exe = addPiPicoExecutableImpl(b, microzig_dep, .{
             .name = b.fmt("example.{s}", .{example}),
             .source_file = .{ .path = b.fmt("examples/{s}.zig", .{example}) },
             .optimize = optimize,
