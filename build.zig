@@ -1,6 +1,4 @@
 const std = @import("std");
-const comptimePrint = std.fmt.comptimePrint;
-
 const microzig = @import("root").dependencies.imports.microzig; // HACK: Please import MicroZig always under the name `microzig`. Otherwise the RP2040 module will fail to be properly imported.
 
 fn root() []const u8 {
@@ -13,8 +11,8 @@ const build_root = root();
 ////////////////////////////////////////
 
 pub fn build(b: *std.Build) !void {
-    _ = b;
     //  Dummy func to make package manager happy
+    _ = b;
 }
 
 pub const chips = struct {
@@ -126,7 +124,7 @@ const chip = .{
     .name = "RP2040",
     .url = "https://www.raspberrypi.com/products/rp2040/",
     .cpu = .cortex_m0plus,
-    .source = .{
+    .register_definition = .{
         .json = .{ .cwd_relative = build_root ++ "/src/chips/RP2040.json" },
     },
     .memory_regions = &.{
