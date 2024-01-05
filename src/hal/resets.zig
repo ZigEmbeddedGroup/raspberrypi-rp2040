@@ -35,11 +35,15 @@ pub const Mask = packed struct(u32) {
     padding: u7 = 0,
 };
 
+// Reset cycle a specific subsystem.
 pub fn reset(mask: Mask) void {
+    const raw_present = RESETS.RESET.raw;
+
     const raw_mask = @as(u32, @bitCast(mask));
 
     RESETS.RESET.raw = raw_mask;
-    RESETS.RESET.raw = 0;
+    // restore state
+    RESETS.RESET.raw = raw_present;
 
     while ((RESETS.RESET_DONE.raw & raw_mask) != raw_mask) {}
 }
