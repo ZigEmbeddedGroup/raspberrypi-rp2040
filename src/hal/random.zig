@@ -19,23 +19,29 @@ const peripherals = microzig.chip.peripherals;
 /// ```
 pub const Ascon = struct {
     state: std.rand.Ascon,
-    counter: usize = 0,
 
     const secret_seed_length = std.rand.Ascon.secret_seed_length;
 
     pub fn init() @This() {
+        // The init function includes just a assertion. One
+        // must make sure the processor is in the right state
+        // to create random numbers using the ROSC.
         rand_init();
 
-        // Get `secret_seed_length` random bytes from the ROSC ...
+        // We seed the RNG with random bits from the ROSC...
         var b: [secret_seed_length]u8 = undefined;
         var i: usize = 0;
-        while (i < secret_seed_length) {
-            const n = rand_rosc();
-            b[i] = @intCast(n & 0xff);
-            b[i + 1] = @intCast((n >> 8) & 0xff);
-            b[i + 2] = @intCast((n >> 16) & 0xff);
-            b[i + 3] = @intCast((n >> 24) & 0xff);
-            i += 4;
+        blk: while (true) {
+            var n = rand_rosc();
+            for (0..4) |_| {
+                if (i >= secret_seed_length) {
+                    break :blk;
+                }
+
+                b[i] = @intCast(n & 0xff);
+                n >>= 8;
+                i += 1;
+            }
         }
 
         return @This(){ .state = std.rand.Ascon.init(b) };
@@ -53,7 +59,7 @@ pub const Ascon = struct {
 
         // then mix new entropy from the rosc into the state
         const n = rand_rosc();
-        self.state.addEntropy(std.mem.asBytes(n));
+        self.state.addEntropy(&std.mem.toBytes(n));
     }
 };
 
@@ -66,9 +72,9 @@ pub fn rand_init() void {
         (sys_clk_src == .clksrc_clk_sys_aux and aux_src != .rosc_clksrc));
 }
 
-/// Fill the buffer with up to buffer.len random bytes
+/// Create a random `u32` value.
 ///
-/// rand uses the RANDOMBIT register of the ROSC as its source, i. e.,
+/// The function uses the RANDOMBIT register of the ROSC as its source, i. e.,
 /// the system clocks _MUST_ run from the XOSC and/or PLLs.
 pub fn rand_rosc() u32 {
     const rosc_state = peripherals.ROSC.CTRL.read().ENABLE.value;
@@ -96,7 +102,7 @@ pub fn rand_rosc() u32 {
             r2 = @as(u32, @intCast(peripherals.ROSC.RANDOMBIT.read().RANDOMBIT));
             if (r1 != r2) break;
         }
-        r = (r << 1) | r1;
+        r = (r << 1) | r1; // r1 is just one bit so we can append it to the end
     }
     return r;
 }
