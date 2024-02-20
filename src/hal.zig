@@ -20,6 +20,7 @@ pub const i2c = @import("hal/i2c.zig");
 pub const time = @import("hal/time.zig");
 pub const uart = @import("hal/uart.zig");
 pub const usb = @import("hal/usb.zig");
+pub const cyw43 = @import("hal/cyw43.zig");
 
 pub const clock_config = clocks.GlobalConfiguration.init(.{
     .ref = .{ .source = .src_xosc },

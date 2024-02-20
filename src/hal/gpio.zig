@@ -178,11 +178,41 @@ pub const Pin = enum(u5) {
         }
     }
 
+    pub inline fn set_drive_strength(gpio: Pin, strength: DriveStrength) void {
+        const pads_reg = gpio.get_pads_reg();
+
+        pads_reg.modify(.{
+            .DRIVE = .{
+                .value = switch (strength) {
+                    .@"2mA" => .@"2mA",
+                    .@"4mA" => .@"4mA",
+                    .@"8mA" => .@"8mA",
+                    .@"12mA" => .@"12mA",
+                },
+            },
+        });
+    }
+
+    pub inline fn set_slew_rate(gpio: Pin, rate: SlewRate) void {
+        const pads_reg = gpio.get_pads_reg();
+
+        pads_reg.modify(.{ .SLEWFAST = switch (rate) {
+            .slow => 0,
+            .fast => 1,
+        } });
+    }
+
     pub inline fn set_direction(gpio: Pin, direction: Direction) void {
         switch (direction) {
             .in => SIO.GPIO_OE_CLR.raw = gpio.mask(),
             .out => SIO.GPIO_OE_SET.raw = gpio.mask(),
         }
+    }
+
+    pub fn set_schmitt(gpio: Pin, enabled: bool) void {
+        const pads_reg = gpio.get_pads_reg();
+
+        pads_reg.modify(.{ .SCHMITT = @intFromBool(enabled) });
     }
 
     /// Drive a single GPIO high/low

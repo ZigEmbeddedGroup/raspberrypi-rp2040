@@ -305,6 +305,134 @@ pub const Pio = enum(u1) {
         });
     }
 
+    pub fn sm_set_pindir(self: Pio, sm: StateMachine, dir: gpio.Direction) void {
+        self.sm_exec(sm, .{
+            .payload = .{
+                .set = .{
+                    .data = @intFromEnum(dir),
+                    .destination = .pindirs,
+                },
+            },
+            .delay_side_set = 0,
+            .tag = .set,
+        });
+    }
+
+    pub fn sm_set_pindirs(self: Pio, sm: StateMachine, pins: []const gpio.Pin, dir: gpio.Direction) void {
+        const sm_regs = self.get_sm_regs(sm);
+
+        const pinctrl_saved = sm_regs.pinctrl.raw;
+        defer sm_regs.pinctrl.raw = pinctrl_saved;
+
+        for (pins) |pin| {
+            sm_regs.pinctrl.modify(.{
+                .SET_BASE = @intFromEnum(pin),
+                .SET_COUNT = 1,
+            });
+
+            self.sm_exec(sm, .{
+                .payload = .{
+                    .set = .{
+                        .data = @intFromEnum(dir),
+                        .destination = .pindirs,
+                    },
+                },
+                .delay_side_set = 0,
+                .tag = .set,
+            });
+        }
+    }
+
+    pub fn sm_set_pins(self: Pio, sm: StateMachine, pins: []const gpio.Pin, state: u1) void {
+        const sm_regs = self.get_sm_regs(sm);
+
+        const pinctrl_saved = sm_regs.pinctrl.raw;
+        defer sm_regs.pinctrl.raw = pinctrl_saved;
+
+        for (pins) |pin| {
+            sm_regs.pinctrl.modify(.{
+                .SET_BASE = @intFromEnum(pin),
+                .SET_COUNT = 1,
+            });
+
+            self.sm_exec(sm, .{
+                .payload = .{
+                    .set = .{
+                        .data = state,
+                        .destination = .pins,
+                    },
+                },
+                .delay_side_set = 0,
+                .tag = .set,
+            });
+        }
+    }
+
+    pub fn sm_set_y(self: Pio, sm: StateMachine, value: u32) void {
+        self.sm_blocking_write(sm, value);
+        self.sm_exec(sm, .{
+            .payload = .{
+                .out = .{
+                    .bit_count = 0,
+                    .destination = .y,
+                },
+            },
+            .delay_side_set = 0,
+            .tag = .out,
+        });
+    }
+
+    pub fn sm_set_x(self: Pio, sm: StateMachine, value: u32) void {
+        self.sm_blocking_write(sm, value);
+        self.sm_exec(sm, .{
+            .payload = .{
+                .out = .{
+                    .bit_count = 0,
+                    .destination = .x,
+                },
+            },
+            .delay_side_set = 0,
+            .tag = .out,
+        });
+    }
+
+    pub fn sm_get_y(self: Pio, sm: StateMachine) u32 {
+        self.sm_exec(sm, .{
+            .payload = .{
+                .in = .{
+                    .bit_count = 0,
+                    .source = .y,
+                },
+            },
+            .delay_side_set = 0,
+            .tag = .out,
+        });
+        return self.sm_blocking_read(sm);
+    }
+
+    pub fn sm_jmp(self: Pio, sm: StateMachine, address: u5) void {
+        self.sm_exec(sm, Instruction{
+            .tag = .jmp,
+
+            .delay_side_set = 0,
+            .payload = .{
+                .jmp = .{
+                    .address = address,
+                    .condition = .always,
+                },
+            },
+        });
+    }
+
+    pub fn set_input_sync_bypass(self: Pio, pin: gpio.Pin, enabled: bool) void {
+        const pio_regs = self.get_regs();
+        if (enabled) {
+            pio_regs.INPUT_SYNC_BYPASS |= pin.mask();
+        } else {
+            pio_regs.INPUT_SYNC_BYPASS &= ~pin.mask();
+        }
+    }
+
     pub fn sm_is_tx_fifo_full(self: Pio, sm: StateMachine) bool {
         const regs = self.get_regs();
         const txfull = regs.FSTAT.read().TXFULL;
@@ -328,6 +456,28 @@ pub const Pio = enum(u1) {
         while (self.sm_is_tx_fifo_full(sm)) {}
 
         self.sm_write(sm, value);
+    }
+
+    pub fn sm_is_rx_fifo_empty(self: Pio, sm: StateMachine) bool {
+        const regs = self.get_regs();
+        const rxempty = regs.FSTAT.read().RXEMPTY;
+        return (rxempty & (@as(u4, 1) << @intFromEnum(sm))) != 0;
+    }
+
+    pub fn sm_get_rx_fifo(self: Pio, sm: StateMachine) *volatile u32 {
+        const regs = self.get_regs();
+        const fifos: *volatile [4]u32 = @ptrCast(&regs.RXF0);
+        return &fifos[@intFromEnum(sm)];
+    }
+
+    pub fn sm_read(self: Pio, sm: StateMachine) u32 {
+        const fifo_ptr = self.sm_get_rx_fifo(sm);
+        return fifo_ptr.*;
+    }
+
+    pub fn sm_blocking_read(self: Pio, sm: StateMachine) u32 {
+        while (self.sm_is_rx_fifo_empty(sm)) {}
+        return self.sm_read(sm);
     }
 
     pub fn sm_set_enabled(self: Pio, sm: StateMachine, enabled: bool) void {
